@@ -1,0 +1,51 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# DANH SÁCH TỪ KHOÁ LOẠI BỎ MERCHANT_NAME (tên cửa hàng không hợp lệ)
+#
+# Áp dụng SAU khi VLM trích xuất. Nếu merchant_name CHỨA bất kỳ pattern nào,
+# field sẽ bị NULL hóa (các field khác của receipt giữ nguyên).
+#
+# QUY TẮC GHI (giống config/exclude_item_patterns.txt):
+#   - Mỗi dòng 1 pattern (substring match, case-insensitive, đã bỏ dấu tiếng Việt)
+#   - Pattern phải KHÔNG DẤU. Module postprocessor tự bỏ dấu tên merchant trước
+#     khi so khớp, nên "hoa don" sẽ bắt cả "Hóa Đơn", "HÓA ĐƠN", "hoá đơn".
+#   - Dòng bắt đầu bằng '#' là comment, bị bỏ qua
+#   - Dòng trống bị bỏ qua
+#   - CSV trên 1 dòng vẫn được chấp nhận (vd: "bill, receipt")
+#
+# ⚠ CẢNH BÁO QUAN TRỌNG về substring match cho MERCHANT_NAME:
+# Substring match nguy hiểm hơn cho merchant so với item — tên nhà hàng/quán
+# có thể CHỨA các từ khoá generic và bị null oan.
+#   - Pattern "hoa don" sẽ null cả merchant tên "Hóa Đơn Coffee" (giả định).
+#   - Pattern "bill" sẽ null cả "Billiards Club".
+# Trước khi thêm pattern mới, RÀ SOÁT dataset thực: pattern đó có xuất hiện
+# trong tên thật của merchant nào không. Khi nghi ngờ, KHÔNG thêm vào file
+# này — để VLM trả về và xử lý ngoài.
+#
+# Override đường dẫn file qua env: EXCLUDE_MERCHANT_PATTERNS_FILE=/path/khac.txt
+# Để TẮT hoàn toàn filter: trỏ env tới file rỗng, hoặc xóa hết pattern dưới đây.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Placeholder / generic — VLM hay hallucinate khi không đọc được logo merchant.
+# Mặc định KHÔNG có pattern nào — danh sách rỗng để filter no-op cho tới khi
+# user tự bổ sung. Lý do: substring match dễ false-positive, nên opt-in từng
+# pattern sau khi đã quan sát dataset.
+#
+# Gợi ý các pattern thường an toàn (KHÔNG enable mặc định — uncomment để bật):
+# customer copy
+# merchant copy
+# bill no
+# invoice no
+# receipt no
+phieu tam tinh
+hoa don thanh toan
+hoa don dien tu
+phieu thanh toan
+quan go vap
+thanh pho ho chinh minh
+thanh pho da nang
+thanh pho ha hoi
+phuong thuc thanh toan
+hoa don ban hang
+phieu tinh tien in lai
+hoa don
+hang da xuat

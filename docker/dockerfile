@@ -1,0 +1,52 @@
+# Dockerfile for Receipt OCR API — GPU-enabled (PaddleOCR DocPreprocessor)
+FROM nvidia/cuda:12.6.3-cudnn-runtime-ubuntu22.04
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1
+
+WORKDIR /app
+
+# System deps:
+#   python3.11 + pip   — runtime
+#   libgl1, libglib    — OpenCV
+#   libgomp1           — OpenMP runtime cho Paddle
+#   ca-certificates    — paddleocr tải model qua HTTPS lần đầu
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    software-properties-common \
+    && add-apt-repository -y ppa:deadsnakes/ppa \
+    && apt-get update && apt-get install -y --no-install-recommends \
+        python3.11 python3.11-venv python3.11-dev python3-pip \
+        curl ca-certificates libgl1 libglib2.0-0 libgomp1 \
+    && ln -sf /usr/bin/python3.11 /usr/local/bin/python \
+    && ln -sf /usr/bin/python3.11 /usr/local/bin/python3 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Python deps. paddlepaddle-gpu cài từ index chính thức của Paddle
+# (PyPI mặc định không host wheel CUDA 12.6).
+COPY requirements.txt .
+RUN pip install --no-cache-dir uv \
+ && uv pip install --system --no-cache-dir -r requirements.txt \
+ && uv pip install --system --no-cache-dir paddlepaddle-gpu==3.1.0 \
+        -i https://www.paddlepaddle.org.cn/packages/stable/cu126/
+
+COPY src/ src/
+COPY config/ config/
+
+RUN useradd -m -u 1000 ocrapiuser \
+ && mkdir -p /home/ocrapiuser/.paddlex \
+ && chown -R ocrapiuser:ocrapiuser /app /home/ocrapiuser
+
+USER ocrapiuser
+
+EXPOSE 8000
+
+# Single worker + uvloop. Multiple workers would multiply semaphore concurrency
+# and cause GPU OOM ở phía vLLM.
+CMD ["uvicorn", "src.main:app", \
+     "--host", "0.0.0.0", \
+     "--port", "8000", \
+     "--workers", "1", \
+     "--loop", "uvloop", \
+     "--timeout-keep-alive", "30", \
+     "--limit-concurrency", "5000"]

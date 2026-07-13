@@ -1,0 +1,88 @@
+# Pipeline V2 — config mặc định (nguồn khai báo duy nhất; ablation = copy file
+# này, đổi cờ, truyền path vào load_config / eval harness).
+# Mọi khoá đều override được qua env: PP2_<SECTION>_<KEY>  (vd PP2_FIT_MAX_PIXELS).
+# Legacy alias còn hiệu lực: VLLM_IMAGE_MAX_PIXELS, VLLM_IMAGE_MIN_PIXELS, PADDLE_DEVICE.
+
+services:
+  device: gpu
+  det_model: PP-OCRv5_server_det
+  det_limit_side_len: 1920
+  det_limit_type: max
+  doc_ori_model: PP-LCNet_x1_0_doc_ori
+  textline_model: PP-LCNet_x1_0_textline_ori
+  rec_model: PP-OCRv5_server_rec
+  enable_doc_ori: true
+  enable_textline: true
+  enable_rec: true
+
+quality:
+  enabled: true
+  norm_width: 1000
+  digital_bypass: true
+  digital_flat_min: 0.40
+  digital_bg_peak_min: 0.20
+
+detect:
+  enabled: true
+  min_polys: 3
+
+orient:
+  enabled: true
+  cardinal_enabled: true
+  vert_ratio_trigger: 0.6
+  vert_ratio_confident: 0.9
+  ratio_min_elongation: 1.5
+  textline_sample: 5
+  textline_min_side_px: 10
+  redetect_after_cardinal: true
+  deskew_enabled: true
+  deskew_min_deg: 0.5
+  deskew_max_deg: 45.0
+  deskew_min_elongation: 2.0
+  deskew_min_samples: 3
+
+localize:
+  enabled: true
+  padding_px: 20
+  trust_min_polys: 7
+  trust_min_coverage: 0.12
+  aspect_inflation_max: 1.5
+  high_poly_min: 50
+
+gate:
+  enabled: true
+  reject_enabled: true
+  unreadable_min_polys: 3
+  unreadable_text_h: 12.0
+  unreadable_blur: 80.0
+  marginal_text_h: 20.0
+  marginal_blur: 250.0
+  variants_enabled: false  # ablation P3: photometric thua minimal 6/6, tốn 0.24-2.2s
+  variant_sample: 12
+  variant_min_gain: 0.02
+
+photometric:
+  enabled: false          # ADR-09: chỉ bật khi ablation chứng minh
+  bg_kernel_frac: 0.125
+  clahe_clip: 2.0
+  clahe_grid: 8
+
+fit:
+  enabled: true
+  max_pixels: 4194304     # đồng bộ VLLM_IMAGE_MAX_PIXELS
+  min_pixels: 1048576     # đồng bộ VLLM_IMAGE_MIN_PIXELS
+  max_side: 3584
+  block: 32               # Qwen3-VL: patch16 × merge2 = 32px/token (verified)
+  zoom_target_text_h: 0.0   # ablation P3: zoom-quá-sàn âm trên proxy (-0.109 conf, +31% px) → OFF
+  thrift_target_text_h: 32.0  # thrift conf-neutral, tiết kiệm 13-26% pixel → giữ
+  max_upscale: 2.5
+  token_thrift: true
+  pad_to_min_pixels: true
+  pad_color: 255
+  reflow_enabled: false   # ablation P3: thua trên ảnh nó kích hoạt; giữ code để re-test với VLM thật
+  reflow_aspect_trigger: 4.0
+  reflow_gain_min: 1.2
+  reflow_max_cols: 4
+  reflow_min_col_aspect: 1.0
+  reflow_separator_px: 10
+  reflow_split_search_frac: 0.2

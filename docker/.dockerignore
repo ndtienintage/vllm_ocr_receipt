@@ -1,0 +1,15 @@
+data/
+plans/
+benchmarks/
+tests/
+models/
+notebook/
+logs/
+docs/
+.git/
+.env
+.env.example
+*.pyc
+.pytest_cache/
+__pycache__/
+*.md

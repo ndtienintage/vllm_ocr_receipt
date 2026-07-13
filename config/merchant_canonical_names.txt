@@ -1,0 +1,86 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# DANH SÁCH TÊN CHUẨN MERCHANT (CANONICAL NAMES) + ALIAS MAPPING
+#
+# Áp dụng SAU khi VLM trích xuất merchant_name. Nếu tên VLM trả về match với
+# một entry dưới đây (substring sau normalize HOẶC SequenceMatcher.ratio ≥
+# MERCHANT_CANONICAL_MIN_RATIO, default 0.9), merchant_name sẽ ĐƯỢC THAY
+# bằng canonical name của entry đó.
+#
+# ─── 2 FORMAT ENTRY ─────────────────────────────────────────────────────────
+#
+# (A) BARE — dùng khi alias = canonical (chỉ gom variant chính tả/dấu):
+#       Bách Hóa Xanh
+#       Co.opmart
+#     → VLM trả "bach hoa xanh" / "BACH HOA XANH" / "Bach Hoá Xanh" → khớp
+#       (substring sau normalize) → replace bằng "Bách Hóa Xanh".
+#
+# (B) MAP `alias => canonical` — dùng khi alias là SLOGAN, từ viết tắt, hay
+#     biến thể KHÔNG chứa canonical:
+#       gia luon re hon => GO
+#       big c => GO
+#     → VLM trả "Gia luôn rẻ hơn khi mua tại..." → match alias "gia luon re
+#       hon" (substring) → replace bằng "GO". Tránh false-positive vì canonical
+#       "GO" (2 ký tự) sẽ match cả "Go Vap", "Mango" nếu dùng dạng bare.
+#
+# ─── QUY TẮC GHI ────────────────────────────────────────────────────────────
+#   - Mỗi dòng 1 entry.
+#   - GIỮ DẤU + chữ HOA/thường của canonical theo brand chính thức (vd "Bách
+#     Hóa Xanh", không phải "BACH HOA XANH"). Comparison sẽ tự normalize 2
+#     phía trước khi so.
+#   - Alias trong dạng MAP có thể không dấu — không quan trọng vì normalize.
+#   - Dòng bắt đầu bằng '#' là comment, bị bỏ qua.
+#   - Dòng trống bị bỏ qua.
+#
+# ─── MATCHING LOGIC ─────────────────────────────────────────────────────────
+#   1. Normalize alias + merchant_name: lowercase + strip diacritics + strip
+#      punctuation + collapse whitespace.
+#   2. Substring (alias ⊂ merchant) → match (score 1.0).
+#   3. Else SequenceMatcher.ratio(merchant, alias) ≥ threshold → match.
+#   4. Entry ĐẦU TIÊN match (theo thứ tự file) được chọn. Viết alias cụ thể /
+#      canonical phổ biến nhất lên đầu file.
+#
+# ⚠ CẢNH BÁO:
+#   - Alias quá ngắn (< 5 ký tự) substring dễ FALSE-POSITIVE. Vd alias bare
+#     "GO" sẽ match "go vap", "logo", "mango". Với brand ngắn, BẮT BUỘC dùng
+#     dạng MAP với slogan/biến thể dài hơn.
+#   - Ratio matching cũng false-positive với 2 chuỗi ngắn (5 ký tự lệch 1 ký
+#     tự = ratio 0.8). Rà soát dataset trước khi thêm alias < 8 ký tự.
+#
+# ─── OVERRIDE ───────────────────────────────────────────────────────────────
+#   - Đường dẫn file:  MERCHANT_CANONICAL_NAMES_FILE=/path/khac.txt
+#   - Ngưỡng ratio:    MERCHANT_CANONICAL_MIN_RATIO=0.9
+#   - TẮT hoàn toàn:   trỏ env tới file rỗng, hoặc xóa hết entry dưới đây.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ─── ACTIVE ENTRIES ─────────────────────────────────────────────────────────
+
+# GO supermarket (rebrand từ Big C cuối 2020): VLM thường đọc được slogan
+# "Giá luôn rẻ hơn" khi không nhận ra logo brand.
+gia luon re hon => GO
+
+# ─── EXAMPLES (uncomment khi cần) ───────────────────────────────────────────
+# Bare canonical (gom variant chính tả/dấu):
+# Bách Hóa Xanh
+# Co.opmart
+# WinMart
+# Emart
+# AEON
+# Tops Market
+# Highlands Coffee
+# Phúc Long
+# The Coffee House
+# Starbucks
+
+# Alias mapping (slogan / viết tắt → canonical):
+gia luon re => GO
+# big c => GO
+# bhx => Bách Hóa Xanh
+# coop => Co.opmart
+phieu thanh toan bach hoa xanh => Bách Hoá Xanh
+gia re hon => GO
+cong ty co phan king food market => King Food Market
+chi nhanh cong ty tnhh mm mega market => Mega Market
+cong ty tnhh ministop viet nam => MINISTOP
+trung tam mm mega market => Mega Market
+trung tam mua sam aeon => AEON
+cong ty co phan thuong mai bach hoa xanh => Bách Hoá Xanh

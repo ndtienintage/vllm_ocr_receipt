@@ -1,0 +1,151 @@
+
+services:
+  # ================================= OCR =================================
+  # ── Resource allocation (L4: 16 CPU / 128G RAM / 24GB VRAM) ──────────
+  vllm-server:
+    image: vllm/vllm-openai:v0.19.1-ubuntu2404
+    container_name: receipt_ocr_vllm
+    runtime: nvidia
+    gpus: all
+    environment:
+      - HUGGING_FACE_HUB_TOKEN=${HUGGING_FACE_HUB_TOKEN:-}
+      - NVIDIA_VISIBLE_DEVICES=all
+      - VLLM_WORKER_MULTIPROC_METHOD=spawn
+      - VLLM_MEMORY_PROFILER_ESTIMATE_CUDAGRAPHS=1
+      - VLLM_FLASHINFER_WORKSPACE_BUFFER_SIZE=536870912
+    shm_size: "8g"
+    ports:
+      - "8001:8001"
+    volumes:
+      - huggingface-cache:/root/.cache/huggingface
+      - vllm-compile-cache:/root/.cache/vllm
+    cpus: "8"
+    mem_limit: 16g
+    mem_reservation: 12g
+    command:
+      - Qwen/Qwen3-VL-8B-Instruct-FP8
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8001"
+      - --dtype
+      - auto
+      - --trust-remote-code
+      # --- Memory and performance tuning ---
+      - --gpu-memory-utilization
+      - "0.7"
+      - --kv-cache-dtype
+      - fp8
+      # -- Content generation performance optimizations ---
+      - --max-model-len
+      - "12284"
+      - --max-num-seqs
+      - "16"
+      - --max-num-batched-tokens
+      - "8192"
+      # --- Chunked prefill: tuần tự hóa prefill để tránh làm chậm decode ---
+      - --enable-chunked-prefill
+      - --long-prefill-token-threshold
+      - "4096"
+      - --max-num-partial-prefills
+      - "1"
+      - --max-long-partial-prefills
+      - "1"
+      # --- Scheduling and interactivity optimizations ---
+      - --enable-prefix-caching
+      - --attention-backend
+      - "FLASHINFER"
+      - --mm-encoder-attn-backend
+      - "FLASH_ATTN"
+      # Cache preprocessed image qua shared memory — giảm CPU overhead khi cùng
+      # bytes ảnh được xử lý lặp (retry, reprocessing). vLLM v0.19+.
+      - --mm-processor-cache-type
+      - shm
+      - --mm-processor-cache-gb
+      - "2"
+      # --- MM input optimizations ---
+      - --limit-mm-per-prompt
+      - '{"image":2, "video":0}'
+      - --mm-processor-kwargs
+      - '{"min_pixels": 1048576, "max_pixels": 3145728}'
+      - --uvicorn-log-level
+      - warning
+      - --mm-encoder-tp-mode
+      - "data"
+      - --generation-config
+      - vllm
+      #- --compilation-config 
+      #- '{"cudagraph_mm_encoder": true}'
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 30s
+      timeout: 10s
+      start_period: 320s
+      retries: 10
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "10"
+    networks:
+      - receipt_ocr_network
+
+  # ================================= API =================================
+  api-ocr:
+    build:
+      context: ..
+      dockerfile: docker/dockerfile
+    container_name: receipt_ocr_api
+    runtime: nvidia
+    gpus: all
+    ports:
+      - "8000:8000"
+    env_file:
+      - ../.env
+    environment:
+      # Use container name for inter-service communication on ocr-network
+      - VLLM_BASE_URL=http://vllm-server:8001/v1
+      # ── GPU access ──
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+      # ── PaddlePaddle VRAM throttle ──
+      - FLAGS_allocator_strategy=auto_growth
+      - FLAGS_fraction_of_gpu_memory_to_use=0
+      - FLAGS_eager_delete_tensor_gb=0.0
+      - FLAGS_memory_fraction_of_eager_deletion=1.0
+      # Cap tổng VRAM Paddle có thể chiếm — fail-fast nếu rò rỉ
+      - FLAGS_gpu_memory_limit_mb=4092
+    volumes:
+      - ../src:/src
+      - ../config:/config
+      - paddleocr-models:/home/ocrapiuser/.paddlex
+    cpus: "4"
+    mem_limit: 16g
+    mem_reservation: 12g
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/ready"]
+      interval: 30s
+      timeout: 15s
+      start_period: 60s
+      retries: 3
+    logging:
+      driver: json-file
+      options:
+        max-size: "500m"
+        max-file: "10"
+    depends_on:
+      vllm-server:
+        condition: service_healthy
+    networks:
+      - receipt_ocr_network
+
+networks:
+  receipt_ocr_network:
+    driver: bridge
+
+volumes:
+  huggingface-cache:
+  vllm-compile-cache:
+  paddleocr-models:

@@ -1,0 +1,59 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# DANH SÁCH TỪ KHOÁ LOẠI BỎ ITEM (chủ yếu là promotion / khuyến mãi)
+#
+# QUY TẮC GHI:
+#   - Mỗi dòng 1 pattern (substring match, case-insensitive, đã bỏ dấu tiếng Việt)
+#   - Item có name CHỨA bất kỳ pattern nào sẽ bị xoá khỏi kết quả OCR
+#   - Dòng bắt đầu bằng '#' là comment, bị bỏ qua
+#   - Dòng trống bị bỏ qua
+#   - Vẫn chấp nhận CSV trên 1 dòng (để copy-paste tiện) — VD: "voucher, coupon"
+#
+# CHÚ Ý: pattern phải KHÔNG DẤU. Module postprocessor sẽ tự bỏ dấu tên item
+# trước khi so khớp, nên "khuyen mai" sẽ bắt cả "Khuyến Mãi", "khuyến mãi", v.v.
+#
+# Override đường dẫn file qua env: EXCLUDE_ITEM_PATTERNS_FILE=/path/khac.txt
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Promotion / voucher / coupon
+ck the aeon
+khuyen mai
+
+# Quà tặng / hàng tặng / miễn phí
+mien phi tang kem
+khan lanh
+qua tang khong ban
+hang tang khong ban
+qua tang kem
+bo qua tang
+# Phiếu mua hàng (gift card)
+phieu mua hang
+
+# Phí đi kèm
+phi dich vu
+service charge
+tip
+phi giao hang
+dich vu giao hang
+
+# Tiền trả / thối / công nợ — tránh model nhét vào items
+tien khach dua
+tien thoi lai
+tien thua
+tien tra lai
+dat coc
+cong no
+du no
+change
+
+# Loyalty / điểm — không phải item bán
+cashback
+diem tich luy
+diem su dung
+loyalty
+member point
+pmh
+tui nylon
+tui nilon
+tui bio co
+tui bhx co
+tui ban hang loai
