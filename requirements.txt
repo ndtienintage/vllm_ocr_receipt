@@ -1,0 +1,26 @@
+# Core dependencies
+python-dotenv==1.2.2
+psutil==7.2.2
+Pillow==12.1.1
+
+# API
+fastapi==0.115.6
+uvicorn==0.41.0
+uvloop==0.19.0
+python-multipart==0.0.6
+aiohttp==3.13.3
+json-repair==0.58.7
+
+# OCR Engine
+openai==1.82.0
+# WARNING: paddlex[ocr-core] 3.2.x (transitive dep của paddleocr 3.2.0) hard-pin
+# opencv-contrib-python==4.10.0.84. Cài cả opencv-python-headless 4.13 sẽ ghi đè
+# namespace cv2/ — opencv docs: "should not install multiple OpenCV packages".
+# Đề xuất: bỏ dòng này → để paddlex tự kéo opencv-contrib-python 4.10.0.84.
+# Hoặc nếu cần headless: dùng opencv-contrib-python-headless==4.10.0.84.
+#opencv-python-headless==4.13.0.92
+numpy==2.2.6
+
+# Image preprocessing — PaddleOCR pipeline (det + textline orientation).
+paddleocr==3.2.0
+paddlepaddle>=3.1.0,<3.2.0  # paddleocr 3.2.0 yêu cầu paddlepaddle 3.1.x
