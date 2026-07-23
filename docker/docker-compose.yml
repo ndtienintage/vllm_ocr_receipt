@@ -42,6 +42,7 @@ services:
       # -- Content generation performance optimizations ---
       - --max-model-len
       - "8192"
+      - "8192"
       - --max-num-seqs
       - "16"
       - --max-num-batched-tokens
@@ -70,7 +71,7 @@ services:
       - --limit-mm-per-prompt
       - '{"image":2, "video":0}'
       - --mm-processor-kwargs
-      - '{"min_pixels": 262144, "max_pixels": 1310720}'
+      - '{"min_pixels": 1048576, "max_pixels": 3145728}'
       - --uvicorn-log-level
       - warning
       - --mm-encoder-tp-mode
