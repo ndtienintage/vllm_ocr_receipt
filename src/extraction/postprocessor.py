@@ -329,6 +329,8 @@ def postprocess_receipt(data: Dict[str, Any]) -> Dict[str, Any]:
         data = _filter_excluded_merchant(data, config.postprocess.exclude_merchant_patterns)
         if "items" in data and isinstance(data["items"], list):
             data["items"] = validate_and_fix_items(data["items"])
+        data.pop("layout", None)
+        data.pop("ly", None)
         return data
     except Exception as e:
         logger.error("postprocess_receipt failed: %s", e)

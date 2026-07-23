@@ -19,7 +19,7 @@ Validators KHÔNG check nội dung (đó là việc của prompt + hallucination
 
 import re
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
@@ -96,10 +96,14 @@ class Receipt(BaseModel):
     loại bỏ ở cấp project để dồn attention của VLM vào trường quan trọng.
     """
     model_config = ConfigDict(populate_by_name=True)
+    layout: Literal[
+        "COMPLETE", "MISSING-HEADER", "ITEM-ONLY", "MISSING-MIDDLE", "MISSING-FOOTER"
+    ] | None = Field(None, alias="ly")
     # Items KHAI BÁO TRƯỚC mọi field khác — guided_json (xgrammar) emit theo
     # đúng thứ tự field trong JSON Schema. Đặt `it` lên đầu để decoder lock
     # vào items trước, tránh rơi vào attractor null trên header/footer (vốn
-    # đầy rule "null when X") rồi mới đến items.
+    # đầy rule "null when X") rồi mới đến items. Đồng bộ với <scan_strategy>
+    # "ITEMS FIRST" trong llm_extractor.py prompt.
     items: list[ReceiptItem] = Field(default_factory=list, alias="it", max_length=100)
 
     merchant_name: str | None = Field(None, alias="mn", max_length=250)
