@@ -10,11 +10,11 @@ Thiết kế prompt theo Qwen3-VL OCR cookbook + Alibaba DashScope pattern:
 Block order (PRIMACY / RECENCY layout — chống "lost in the middle":
 Liu et al. 2023 + Anthropic prompt-structure guide). LLM chú ý mạnh nhất ở
 ĐẦU và CUỐI prompt, yếu ở GIỮA (RoPE distance-decay + attention-sink). Vì model
-generate theo schema order (ly → it TRƯỚC, rồi mới header/footer scalars), nên
-phần CUỐI prompt là "freshest" cho ly + items — đúng 2 field user hay sai nhất.
+generate theo schema order (it TRƯỚC, rồi mới header/footer scalars), nên
+phần CUỐI prompt là "freshest" cho items — field user hay sai nhất.
   PRIMACY (đầu — set frame):
     1. <task>           — scope + JSON-only contract
-    2. <schema>         — JSON shape (`ly` trước `it` trước header/footer scalars)
+    2. <schema>         — JSON shape (`it` trước header/footer scalars)
                           + reading-order roadmap (work in order, nulls don't
                           cascade) làm orientation sớm.
                           KHÔNG có <context> năm hiện tại — date/time literal bị
@@ -24,10 +24,10 @@ phần CUỐI prompt là "freshest" cho ly + items — đúng 2 field user hay s
     3. <merchant_rules> — `mn` / `ma`: header window, brand selection, reject list
     4. <datetime>       — `td` / `tt` / `ta` reject cues
     5. <numbers>        — VND thousand-separator stripping + decimal-qty exception
-  RECENCY (cuối — freshest cho ly + items, là core reasoning + 2 pain-point):
-    6. <classify>       — quyết định `ly` đầu tiên + ZONE-LOCAL nulling matrix
-                          (COMPLETE / MISSING-HEADER / ITEM-ONLY / MISSING-FOOTER).
-                          Null cục bộ trong zone bị cắt, KHÔNG cascade.
+  RECENCY (cuối — freshest cho items, là core reasoning + pain-point):
+    6. <zones>          — ZONE-LOCAL nulling: zone bị cắt (header/items/footer)
+                          null CỤC BỘ field của chính nó, KHÔNG cascade
+                          (cropped-header → mn/ma null; missing-footer → ta null).
     7. <ecommerce>      — override layout app TMĐT (Shopee/Lazada/TikTok): shop
                           name vị trí giữa màn hình, ma=địa chỉ KHÁCH→null, giá
                           gạch=giá gốc bỏ, p/t app-card
@@ -43,9 +43,9 @@ phần CUỐI prompt là "freshest" cho ly + items — đúng 2 field user hay s
    10. <output>         — type strictness + no-fence reminder (truly last)
 
 Anti-all-null tuning:
-  - reading-order roadmap (trong <schema>) + <classify> đóng "null là cause cục bộ"
+  - reading-order roadmap (trong <schema>) + <zones> đóng "null là cause cục bộ"
   - WHEN-IN-DOUBT EMIT trong <items> bias emit khi tên row đọc được nhưng số mờ
-  - ITEMS FLOOR cho ITEM-ONLY: `it` MUST NOT be empty
+  - ITEMS FLOOR cho items-only crop: `it` MUST NOT be empty
 
 Path primary (VLM thuần). Khi hậu xử lý phát hiện hallucination, processing.py
 sẽ thay bằng fallback text-only (paddle OCR → text_extractor.extract_receipt_text_only).
@@ -71,15 +71,14 @@ OCR extractor for Vietnamese/English receipts (retail, F&B, hotel, parking, gas,
 </task>
 
 {reflow_hint}<schema>
-{"ly":"COMPLETE"|"MISSING-HEADER"|"ITEM-ONLY"|"MISSING-FOOTER"|null,
- "it":[{"n":string|null,"qty":number|null,"p":number|null,"t":number|null}],
+{"it":[{"n":string|null,"qty":number|null,"p":number|null,"t":number|null}],
  "mn":string|null,"ma":string|null,"td":"DD-MM-YYYY"|null,"tt":"HH:MM[:SS]"|null,
  "ta":number|null}
-Emit ONLY these keys (no subtotal/tax/currency/payment/receipt-code field). Work in order: ly (which zones are present) → it (your MAIN job: n=name, qty, p=unit price, t=line total) → scalars mn/ma/td/tt/ta. Each unreadable field is null on its own; nulls NEVER cascade across fields.
+Emit ONLY these keys (no subtotal/tax/currency/payment/receipt-code field). Work in order: it (your MAIN job: n=name, qty, p=unit price, t=line total) → scalars mn/ma/td/tt/ta. Each unreadable field is null on its own; nulls NEVER cascade across fields.
 </schema>
 
 <merchant_rules>
-mn/ma come ONLY from the header (top zone up to the first item row / column header / total label); never from items body or footer. CROPPED-HEADER GUARD (applies even without ly): if the topmost readable line is already an item/promo/column-header with NO brand logo above → mn=null AND ma=null; never recover from a line BELOW items. A wrong value is worse than null.
+mn/ma come ONLY from the header (top zone up to the first item row / column header / total label); never from items body or footer. CROPPED-HEADER GUARD: if the topmost readable line is already an item/promo/column-header with NO brand logo above → mn=null AND ma=null; never recover from a line BELOW items. A wrong value is worse than null.
 mn: the storefront brand the customer recognizes (largest/boldest/centered proper noun or logo: "GO!", "WinMart", "Circle K", "Bách Hóa Xanh"). BRAND BEATS LEGAL ENTITY: if both a brand and a registered company (Cty CP / CÔNG TY CỔ PHẦN / TNHH / JSC) show, pick the brand; use the company only if no brand. Skip doc markers (HÓA ĐƠN, GTGT, PHIẾU TÍNH TIỀN, BILL, RECEIPT, TAX INVOICE, COPY). Concatenate adjacent lines only if both are one registered name ("CÔNG TY TNHH"+"THỰC PHẨM ABC"); never append slogan/address/branch/hotline/web. Payment/promo/voucher/loyalty/cashier/thank-you → null.
 ma: full street address from the header, lines joined with ", ". Cues: đường/phố/số nhà/phường/quận/P./Q./TP./Tầng/Lô/ward/district/street-number. Reject (→null): promo/payment/loyalty/thank-you, MST, phone/web/email, cashier, branch-only, any item row.
 </merchant_rules>
@@ -94,13 +93,12 @@ ta: the final grand total actually paid — REQUIRES an explicit same-row label 
 VND: both '.' and ',' are thousand separators — strip, output an integer ("55.000"→55000, "1,250,000"→1250000), preserve the digit count. EXCEPT decimal-weight qty (measured goods "0,704" kg) keeps its decimal when the row has a qty column but no separate unit-price token.
 </numbers>
 
-<classify>
-Decide ly from evidence at the IMAGE EDGES; a cropped zone nulls ONLY its own fields.
-- COMPLETE: brand top, items mid, labeled totals bottom.
-- MISSING-HEADER: topmost text is already item/promo/column-header/doc-type, no brand in the header window → mn=null AND ma=null (never substitute).
-- ITEM-ONLY: tight items crop, no header AND no totals/payment → every field except it null; it MUST NOT be empty.
-- MISSING-FOOTER: header+items but bottommost text is an item row, no totals/payment → ta=null (the totals zone is cut); a date/time printed in the visible header still counts for td/tt.
-</classify>
+<zones>
+Judge which zones are present from evidence at the IMAGE EDGES; a cropped zone nulls ONLY its own fields — never substitute a value from another zone.
+- Topmost text is already an item/promo/column-header/doc-type with no brand in the header window → mn=null AND ma=null.
+- Tight items crop with no header AND no totals/payment → every field except it null; it MUST NOT be empty.
+- Bottommost text is an item row with no totals/payment (the totals zone is cut) → ta=null; a date/time printed in the visible header still counts for td/tt.
+</zones>
 
 <ecommerce>
 APP ORDER SCREENS (Shopee/Lazada/TikTok Shop screenshots) — recognize by a phone status bar, a screen title ("Đã giao đơn hàng"/"Thông tin đơn hàng"/"Đơn hàng đã hoàn thành"/"Chi tiết đơn hàng"), a "Mall" badge, or action buttons ("Mua lại"/"Đánh giá"/"Yêu cầu hoàn tiền"). These OVERRIDE the header rules:

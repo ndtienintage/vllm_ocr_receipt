@@ -184,12 +184,11 @@ CRITICAL COORDINATE LOGIC:
 
 <schema>
 {
- "ly":"COMPLETE"|"MISSING-HEADER"|"ITEM-ONLY"|"MISSING-MIDDLE"|"MISSING-FOOTER"|null,
  "it":[{"n":string|null,"qty":number|null,"p":number|null,"t":number|null}],
  "mn":string|null,"ma":string|null,"td":"DD-MM-YYYY"|null,"tt":"HH:MM[:SS]"|null,
  "ta":number|null
 }
-Extract ONLY these keys. There is no subtotal, tax, currency, payment-method, or receipt/invoice-code field — never emit them. `ly` is an internal reasoning scaffold, not customer data.
+Extract ONLY these keys. There is no subtotal, tax, currency, payment-method, or receipt/invoice-code field — never emit them.
 </schema>
 
 <extraction_discipline>
@@ -205,18 +204,14 @@ Paddle has ALREADY done the character-level OCR; your job is to MAP its lines in
 8. NO PROSE, NO MARKDOWN FENCES. Return exactly one raw JSON object — no ```json fences, no commentary.
 </extraction_discipline>
 
-<receipt_layout_rules>
-Analyze the OCR line sequence and classify the layout state in the `"ly"` field:
-1. "MISSING-HEADER": The very first lines in the input sequence already contain product codes, item prices, or column headers (e.g., "SL", "Đơn giá", "Thành tiền"). No merchant name/address exists at the top. 
-   -> Enforcement: Set `ly = "MISSING-HEADER"`, `mn = null`, `ma = null`.
-2. "ITEM-ONLY": The OCR input contains exclusively item rows and price layouts. No merchant brand at the top, and no financial summary footers at the bottom.
-   -> Enforcement: Set `ly = "ITEM-ONLY"`. All fields except `it` MUST be `null`.
-3. "MISSING-MIDDLE": Valid merchant headers are present at the beginning, and total payment footers exist at the end, but the middle segment containing the product text is missing, completely skipped, or blank.
-   -> Enforcement: Set `ly = "MISSING-MIDDLE"` and `it = []`.
-4. "MISSING-FOOTER": Has valid headers and item rows, but the sequence terminates abruptly on an item row; no total labels, payment methods, or dates follow.
-   -> Enforcement: Set `ly = "MISSING-FOOTER"`, and set `ta=null`, `td=null`, `tt=null`.
-5. "COMPLETE": All 3 components are present in the OCR flow: Header (Merchant) + Middle (Items) + Footer (Totals/Date).
-</receipt_layout_rules>
+<zone_rules>
+Judge which zones are present in the OCR line sequence; a missing zone nulls ONLY its own fields — never substitute from another zone:
+1. MISSING HEADER: the very first lines already contain product codes, item prices, or column headers (e.g., "SL", "Đơn giá", "Thành tiền") and no merchant name/address exists at the top → set `mn = null`, `ma = null`.
+2. ITEMS ONLY: the input contains exclusively item rows and price layouts — no merchant brand at the top and no financial summary footer at the bottom → all fields except `it` MUST be `null`.
+3. MISSING MIDDLE: valid merchant headers at the beginning and total/payment footers at the end, but the middle product segment is missing, skipped, or blank → set `it = []`.
+4. MISSING FOOTER: valid headers and item rows, but the sequence ends abruptly on an item row with no total labels, payment methods, or dates following → set `ta=null`, `td=null`, `tt=null`.
+5. COMPLETE: all 3 components are present (Header + Items + Footer) → extract every field normally.
+</zone_rules>
 
 <valid_item_gate>
 GATE every object before placing it in `it`. This is the FMCG / SKU filter and it OVERRIDES "WHEN-IN-DOUBT EMIT": when the doubt is "is this a PRODUCT or noise?", the answer is DROP. A valid SKU line names a thing a shopper bought; description, price tokens, promotions, and store info are NOT products.
@@ -234,7 +229,7 @@ NOISE CLASSES — never their own product name:
 </valid_item_gate>
 
 <items_extraction_rules>
-1. PROCESS ORDER: Determine `ly` first, extract `it` next to anchor the body data, then parse header and footer fields.
+1. PROCESS ORDER: extract `it` first to anchor the body data, then parse header and footer fields.
 2. SAME-ROW MERGE: If a product name box and a price box share overlapping [y1, y2] zones, merge them into a single item object.
 3. ATTRIBUTE MERGE (PRIORITY — fold sub-lines INTO the parent SKU name, do NOT drop): a line that hangs off the item above and is a GENUINE CONSUMPTION ATTRIBUTE of that product — topping, size, sugar level, or ice level — is NOT its own item. APPEND its descriptive text to the previous item's `n` with " + ", in printed top→bottom order. Strip trailing standalone numbers (ticket id, item count) and any add-on price; keep only words (parent keeps its own printed `p`/`t`, never sum). Cues (± diacritics): toppings `Topping`/`Thêm`/`Extra`/`Trân châu`/`Chân châu`/`Pudding`/`Thạch`/`Kem cheese`; size `Size`/`Up size`; sugar `Ít đường`/`Không đường`/`30% đường`/`50% đường`/`Bình thường`; ice `Ít đá`/`Nhiều đá`/`Không đá`/`Đá riêng`. DO NOT MERGE (NOT consumption attributes — ignore them, never an item, never appended to any `n`): customer notes `Ghi chú`/`Note`/`Yêu cầu`/`Lưu ý`/`Lời nhắn`, and order-type / dining tags `Mang đi`/`Mang ve`/`Tại quán`/`Take away`/`Dine in`/`Giao hàng`/`Ship`. Promotions / discounts / gift giveaways are handled by rule 4 DROP — never merge them into `n`. Example: parent "Trà sữa matcha" + "Ít đường" + "Trân châu trắng" + "Ít đá" → n="Trà sữa matcha + Ít đường + Trân châu trắng + Ít đá". An ORPHAN sub-line (no product above) → DROP.
 4. DROP vs STRUCTURAL:
