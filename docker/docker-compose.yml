@@ -17,14 +17,13 @@ services:
     ports:
       - "8001:8001"
     volumes:
-      - ./outputs/Qwen3-VL-8B-Instruct-receipt-FP8:/model:ro
       - huggingface-cache:/root/.cache/huggingface
       - vllm-compile-cache:/root/.cache/vllm
     cpus: "8"
     mem_limit: 16g
     mem_reservation: 12g
     command:
-      - /model
+      - Qwen/Qwen3-VL-8B-Instruct-FP8
       - --host
       - 0.0.0.0
       - --port
@@ -32,8 +31,6 @@ services:
       - --dtype
       - auto
       - --trust-remote-code
-      - --served-model-name
-      - Qwen/Qwen3-VL-8B-Instruct-FP8
       # --- Memory and performance tuning ---
       - --gpu-memory-utilization
       - "0.7"
@@ -71,7 +68,11 @@ services:
       - --limit-mm-per-prompt
       - '{"image":2, "video":0}'
       - --mm-processor-kwargs
+<<<<<<< HEAD
       - '{"min_pixels": 1048576, "max_pixels": 3145728}'
+=======
+      - '{"min_pixels": 524288, "max_pixels": 1310720}'
+>>>>>>> b420c5a (nothing)
       - --uvicorn-log-level
       - warning
       - --mm-encoder-tp-mode
