@@ -38,8 +38,7 @@ services:
       - fp8
       # -- Content generation performance optimizations ---
       - --max-model-len
-      - "8192"
-      - "8192"
+      - "12288"
       - --max-num-seqs
       - "16"
       - --max-num-batched-tokens
@@ -68,7 +67,7 @@ services:
       - --limit-mm-per-prompt
       - '{"image":2, "video":0}'
       - --mm-processor-kwargs
-      - '{"min_pixels": 524288, "max_pixels": 1310720}'
+      - '{"min_pixels": 524288, "max_pixels": 2097152}'
       - --uvicorn-log-level
       - warning
       - --mm-encoder-tp-mode
