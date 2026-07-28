@@ -106,7 +106,7 @@ Decide ly from evidence at the IMAGE EDGES; a cropped zone nulls ONLY its own fi
 APP ORDER SCREENS (Shopee/Lazada/TikTok Shop screenshots) — recognize by a phone status bar, a screen title ("Đã giao đơn hàng"/"Thông tin đơn hàng"/"Đơn hàng đã hoàn thành"/"Chi tiết đơn hàng"), a "Mall" badge, or action buttons ("Mua lại"/"Đánh giá"/"Yêu cầu hoàn tiền"). These OVERRIDE the header rules:
 - mn = the SHOP name beside the shop avatar (next to a ">" chevron and/or "Mall" badge, ABOVE the product card), even if not at image top. NEVER the screen title, recipient/buyer, status bar, or button. Keep any " - …" suffix; drop "Mall"/">".
 - ma = null (the printed address is the CUSTOMER's shipping address: Người nhận/Người mua/Địa chỉ nhận hàng + masked phone).
-- STRUCK-THROUGH price: use ONLY the real (bolder, non-struck) price for p/t; ignore the struck giá gốc. A store-wide banner ("Giảm 237.980đ tại cửa hàng này", "Mall Giảm …") is not an item — drop it.
+- STRUCK-THROUGH price: use ONLY the real (bolder, non-struck) price for p/t; ignore the struck giá gốc. A store-wide banner ("Giảm 237.980đ tại cửa hàng này", "Mall Giảm …", "Quà tặng") is not an item — drop it.
 - qty: the "×N" badge or a printed weight; MAY be null; never fold into p/t or multiply it in.
 - p is ALMOST ALWAYS null on app cards: a "×N"/"Nx" badge + exactly ONE right-aligned amount → that amount is ALWAYS t and p=null, even if qty=1; never divide t by qty. Set p ONLY if a distinct per-unit price is separately printed.
 - t = the rightmost amount on the SKU's product card; every item MUST have a t.
@@ -117,7 +117,6 @@ APP ORDER SCREENS (Shopee/Lazada/TikTok Shop screenshots) — recognize by a pho
 Items anchor the document. Scan line by line, top to bottom.
 ROW: any line sharing the Y-axis of a qty/price/total token is an item row → its text is it[].n ONLY, never mn/ma.
 WHEN-IN-DOUBT EMIT: readable name but missing/misaligned numbers → still emit {"n":"name","qty":null,"p":null,"t":null}. Missing numbers alone is not a reason to drop a readable row.
-BLUR SENTINEL: a line that clearly IS an item row but too blurry/faded/smudged to read without guessing → emit {"n":"ITEM BLUR","qty":null,"p":null,"t":null}. NEVER guess characters or borrow a neighbouring name. ONLY for a genuine unreadable item row — NOT structural/footer lines (drop those), NOT a readable name with missing numbers (use WHEN-IN-DOUBT EMIT).
 UNIT-WORD ≠ NAME: a line that is ONLY a unit word ± a count ("Gói", "Gói 2", "2 Hộp", "Kg", "x3 Lốc") is never a name — it is the unit/qty of the product named ABOVE; merge it upward (take its qty/p/t, keep the name above).
 MULTI-ROW MERGE (name line + the numeric line below = ONE item):
 - GO-UNIT: NAME line + "qty unit_word x price total" OR "unit_word qty price total" ("3 Hộp x 10.000 30.000", "Gói 2 9.800 19.600") → n=NAME line; drop the unit_word and its count; qty/p/t from the numeric line.

@@ -33,8 +33,15 @@ logger = get_logger(__name__)
 # khớp DATE_DMY (regex_patterns) → tránh phân kỳ với fallback path.
 #   _DMY_DATE_RE: day-first DD-MM-YYYY — format model output (chuẩn VN in trên bill).
 #   _YMD_DATE_RE: year-first YYYY-MM-DD (ISO) — tương thích ngược nếu model còn trả ISO.
+#   _YMD_COMPACT_RE: 8 chữ số liền không separator YYYYMMDD (model đôi khi nén,
+#       vd "20230916"); year-first, calendar-invalid thử DDMMYYYY.
+#   _YY_DATE_RE: năm 2 chữ số đứng ĐẦU YY-MM-DD (vd "23-09-16" → 2023-09-16);
+#       model đôi khi truncate năm còn 2 số. g3 là \d{1,2} nên KHÔNG đụng _DMY
+#       (vốn cần \d{4} ở cuối) — 4-digit-year form vẫn route đúng nhánh trên.
 _DMY_DATE_RE = re.compile(r"^(\d{1,2})[\s./\-](\d{1,2})[\s./\-](\d{4})$")
 _YMD_DATE_RE = re.compile(r"^(\d{4})[\s./\-](\d{1,2})[\s./\-](\d{1,2})$")
+_YMD_COMPACT_RE = re.compile(r"^(\d{4})(\d{2})(\d{2})$")
+_YY_DATE_RE = re.compile(r"^(\d{2})[\s./\-](\d{1,2})[\s./\-](\d{1,2})$")
 
 # Match HH:MM hoặc HH:MM:SS ở ĐẦU chuỗi — cho phép cắt suffix lạ. Vd model
 # OCR "08:52  NV:283872" có thể gộp thành "08:52:NV:283872" (15 chars > max_length
@@ -210,14 +217,19 @@ class Receipt(BaseModel):
 
         Prompt yêu cầu LLM output DD-MM-YYYY (day-first — đúng thứ tự in trên bill
         VN; model CHÉP, không tự đảo → bỏ lỗi swap ngày↔tháng). Validator đảo sang
-        ISO bằng code (deterministic):
+        ISO bằng code (deterministic). Các dạng input được nhận:
+          - YYYY-MM-DD (ISO, separator -/./space): chuẩn hoá luôn (tương thích ngược).
           - DD-MM-YYYY (separator -/./space): thử day-first; nếu tháng > 12 (model
             lỡ in MM-DD) → fallback đảo MM-DD.
-          - YYYY-MM-DD (ISO): chuẩn hoá luôn (tương thích ngược nếu model còn trả ISO).
+          - YYYYMMDD (8 số liền, không separator): year-first; invalid → thử DDMMYYYY.
+          - YY-MM-DD (năm 2 số đứng đầu): năm = 2000+YY (hoá đơn đều thập niên 20xx);
+            nếu tháng > 12 → fallback đảo YY-DD-MM. Mặc định year-first theo hành vi
+            thực tế của model — dạng all-2-digit "gg-gg-gg" vốn nhập nhằng với
+            DD-MM-YY, chỉ tách được khi một nhóm > 31 (xem heuristic bên dưới).
           - Không khớp / calendar invalid (vd 32-13-2026) → trả raw (debug-friendly).
           - None/rỗng → None.
         CHƯA xử lý (known-limit, giữ raw): tên tháng VN viết chữ ("tháng Năm"),
-        năm 2 chữ số. Xem docs/field_extraction_rules.md §5.
+        compact 6 số YYMMDD (nhập nhằng cao). Xem docs/field_extraction_rules.md §5.
         """
         if v is None:
             return None
@@ -240,6 +252,33 @@ class Receipt(BaseModel):
             except ValueError:
                 try:
                     return datetime(y, d, mo).strftime("%Y-%m-%d")    # fallback: model swapped → MM-DD
+                except ValueError:
+                    return s
+        m = _YMD_COMPACT_RE.match(s)
+        if m:
+            g1, g2, g3 = int(m.group(1)), int(m.group(2)), int(m.group(3))
+            try:
+                return datetime(g1, g2, g3).strftime("%Y-%m-%d")      # YYYYMMDD (year-first)
+            except ValueError:
+                try:
+                    return datetime(g3, g2, g1).strftime("%Y-%m-%d")  # fallback: DDMMYYYY
+                except ValueError:
+                    return s
+        m = _YY_DATE_RE.match(s)
+        if m:
+            g1, g2, g3 = int(m.group(1)), int(m.group(2)), int(m.group(3))
+            # Disambiguate YY-MM-DD vs DD-MM-YY: chỉ tách chắc chắn khi một biên
+            # KHÔNG thể là ngày (>31). Còn lại (cả hai ≤31, vd năm 20xx) → mặc
+            # định year-first theo format model đang trả.
+            if g3 > 31 >= g1:                                         # DD-MM-YY (năm ở cuối)
+                d, mo, y = g1, g2, 2000 + g3
+            else:                                                     # YY-MM-DD (năm ở đầu)
+                y, mo, d = 2000 + g1, g2, g3
+            try:
+                return datetime(y, mo, d).strftime("%Y-%m-%d")
+            except ValueError:
+                try:
+                    return datetime(y, d, mo).strftime("%Y-%m-%d")    # fallback: month/day swapped
                 except ValueError:
                     return s
         return s
