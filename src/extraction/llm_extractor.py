@@ -115,21 +115,26 @@ APP ORDER SCREENS (Shopee/Lazada/TikTok Shop screenshots) — recognize by a pho
 
 <items>
 Items anchor the document. Scan line by line, top to bottom.
-ROW: any line sharing the Y-axis of a qty/price/total token is an item row → its text is it[].n ONLY, never mn/ma.
 WHEN-IN-DOUBT EMIT: readable name but missing/misaligned numbers → still emit {"n":"name","qty":null,"p":null,"t":null}. Missing numbers alone is not a reason to drop a readable row.
-UNIT-WORD ≠ NAME: a line that is ONLY a unit word ± a count ("Gói", "Gói 2", "2 Hộp", "Kg", "x3 Lốc") is never a name — it is the unit/qty of the product named ABOVE; merge it upward (take its qty/p/t, keep the name above).
+UNIT-WORD != NAME: a line that is ONLY a unit word ± a count ("Gói", "Gói 2", "2 Hộp", "Kg", "x3 Lốc") is never a name — it is the unit/qty of the product named ABOVE;
+ merge it upward (take its qty/p/t, keep the name above).
 MULTI-ROW MERGE (name line + the numeric line below = ONE item):
-- GO-UNIT: NAME line + "qty unit_word x price total" OR "unit_word qty price total" ("3 Hộp x 10.000 30.000", "Gói 2 9.800 19.600") → n=NAME line; drop the unit_word and its count; qty/p/t from the numeric line.
-- BARCODE: "barcode name" + "[VAT%] qty price total" → strip barcode, n=name, qty/p/t from line 2. A line that begins VATper but ALSO carries qty+price+total IS this numeric line (merge it) — NOT a structural VAT-amount line.
+- GO-UNIT: NAME line + "qty unit_word x price total" OR "unit_word qty price total" ("3 Hộp x 10.000 30.000", "Gói 2 9.800 19.600") → n=NAME line; 
+ drop the unit_word and its count; qty/p/t from the numeric line.
+- BARCODE: "barcode name" + "[VAT%] qty price total" → strip barcode, n=name, qty/p/t from line 2.
+ A line that begins VATper but ALSO carries qty+price+total IS this numeric line (merge it) — NOT a structural VAT-amount line.
 - DISCOUNT-NAME: "name -discount" + "barcode qty price[-disc%] total" → n=name (drop -discount and -disc%), qty/p/t from line 2.
 PRICE vs TOTAL: if an item row prints only ONE amount, it is t, not p. NEVER infer p by dividing t/qty; p is null unless a separate per-unit price is printed.
-ATTRIBUTE MERGE: a sub-line that is a genuine consumption attribute of the item above (topping/size/sugar/ice) → APPEND its words to the previous n with " + " in printed order; strip any add-on price and trailing ids; the parent keeps its own p/t (do NOT sum the add-on). DO NOT MERGE (metadata — ignore, never an item, never into any n): notes (Ghi chú/Note/Yêu cầu/Lưu ý/Lời nhắn), order-type tags. Orphan sub-line (no name above) → drop.
+ATTRIBUTE MERGE: a sub-line that is a genuine consumption attribute of the item above (topping/size/sugar/ice) ->
+ APPEND its words to the previous n with " + " in printed order; strip any add-on price and trailing ids; the parent keeps its own p/t (do NOT sum the add-on). DO NOT MERGE (metadata — ignore, never an item, never into any n): notes (Ghi chú/Note/Yêu cầu/Lưu ý/Lời nhắn), order-type tags. Orphan sub-line (no name above) → drop.
 DROP HARD (never an item, never merged, regardless of recurrence, notation @unit/#unit, or diacritics):
 - discount/promo: KHUYẾN MÃI/KM, CK THẺ …%, DISC%/DISCOUNT, Voucher, Giảm giá, or any per-item NEGATIVE amount (e.g. "@55.000 -10.000"). May recur 0–3× per parent — drop each.
 - gift/giveaway: Tặng/Tặng kèm/Quà tặng/Kèm theo/Đi kèm, "mua…tặng…", any free row (amount 0 / miễn phí).
 - INLINE discount on a single-row item ("Bánh 100.000 -10.000 90.000"): keep p=original, t=final, drop only the -discount token; do NOT split.
 STRUCTURAL (never an item; feed footer or ignore): column headers, barcodes, Phí phục vụ/service fee, standalone VAT-amount lines, Giá gốc (original-price metadata), expiry/mfg dates (HSD/NSX/EXP/MFG/Hạn sử dụng/Date), subtotal/total, payment, loyalty/points, hotline/web/thank-you. An expiry line printed BETWEEN a name and its price does NOT break the item — drop it, still merge the name with the price.
-LOOP BAILOUT: if the SAME n repeats on ≥4 consecutive rows all with null/0 t, you are looping — STOP and close it after the last row with a real number. EXCEPTION: "ITEM BLUR" is a deliberate marker, keep each one. Also close a string field with null if a 6–10 char fragment repeats 3× inside it. Emit only what is printed; never pad to fill the page.
+LOOP BAILOUT: if the SAME n repeats on ≥4 consecutive rows all with null/0 t, you are looping — STOP and close it after the last row with a real number. 
+ EXCEPTION: "ITEM BLUR" is a deliberate marker, keep each one. Also close a string field with null if a 6–10 char fragment repeats 3× inside it. 
+ Emit only what is printed; never pad to fill the page.
 </items>
 
 <examples>

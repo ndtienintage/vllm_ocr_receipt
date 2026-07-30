@@ -67,7 +67,7 @@ services:
       - --limit-mm-per-prompt
       - '{"image":2, "video":0}'
       - --mm-processor-kwargs
-      - '{"min_pixels": 524288, "max_pixels": 2097152}'
+      - '{"min_pixels": 1048576, "max_pixels": 3145728}'
       - --uvicorn-log-level
       - warning
       - --mm-encoder-tp-mode
