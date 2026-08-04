@@ -192,19 +192,6 @@ CRITICAL COORDINATE LOGIC:
 Extract ONLY these keys. There is no subtotal, tax, currency, payment-method, or receipt/invoice-code field — never emit them. `ly` is an internal reasoning scaffold, not customer data.
 </schema>
 
-<extraction_discipline>
-Paddle has ALREADY done the character-level OCR; your job is to MAP its lines into the schema, not to re-judge whether each character is "good enough". Be generous — extract every field whose source line is readable as printed.
-
-1. PARTIAL EXTRACTION > BLANKET NULL. Null is per-FIELD, never per-receipt. If `mn` is unreadable but `it`/`ta`/`td` are clear, emit those clearly and only null `mn`. Returning an all-null receipt while ≥3 Paddle lines were provided is a FAILURE mode — do not do it.
-2. WHEN-IN-DOUBT EMIT for items. A row with a readable product name but missing or misaligned numbers STILL gets emitted as `{"n":"name","qty":null,"p":null,"t":null}`. Missing numbers alone is NOT a reason to drop the row. This bias applies ONLY when the line reads as a genuine product name (see <valid_item_gate>) — never emit a price-only, code-only, promotion, column-header, unit-only, or footer/loyalty line as an item just to avoid an empty row. "Doubt about a noise line" resolves to DROP, not emit.
-3. NULL ONLY THE UNREADABLE TOKEN, not the whole row. If the qty column is garbled but the name and total are clear, emit `{"n":"name","qty":null,"p":null,"t":<total>}`. Do not abort the row over one bad token.
-4. MID-STREAM ABORT — narrow trigger only. Abort a row mid-decode ONLY when you catch yourself fabricating characters from pixels you cannot read (e.g. inventing digits to "complete" a price). A minor diacritic uncertainty, a missing accent, or a slight x-coordinate shift is NOT a trigger. BLUR SENTINEL (continue, never derail): when the NAME is genuinely unreadable garble BUT the row clearly IS one item — it carries a usable price / line-total number in the items body — emit `{"n":"ITEM BLUR","qty":<readable or null>,"p":<readable or null>,"t":<readable or null>}` and move on, instead of guessing the name or borrowing the row above. A garbled cluster with NO usable number is noise → DROP (rule 7 / gate), never "ITEM BLUR".
-5. NEVER FABRICATE. Do not invent characters, digits, or merchant info that no OCR line supports. A clean per-field null beats invented content.
-6. LOOP BAILOUT. If the same 6-10 character fragment ("00000", "XXXXX", "  ") repeats 3+ times inside one string field, stop, close that field with null, move on. If an item discount label (e.g. `KHUYẾN MÃI`) appears 2+ times in `it`, stop emitting items, close `it`, move to footer.
-7. FRAGMENTED-OCR FLOOR (anti-flood). When the OCR is badly broken — most lines are stray letter clusters ("GOU", "OTEUTN", "S N", "H C DI A H"), lone numbers ("100", "61.5", "77.900"), or pieces that cannot be paired into a name+number item — DO NOT emit one item per fragment. A real receipt item almost always carries at least a `t` (line total). If you would produce many items where almost NONE has any of qty/p/t, that is a mapping failure: emit ONLY the few items you can read with a number or a clean product word, and leave the rest out. A short, mostly-numbered `it` (even empty `it`) beats a long list of numberless fragments — the latter is wrong output, not partial success. This does NOT override rule 2 for genuine name-only product rows on otherwise-clean OCR; it targets the garbled-dump case only.
-8. NO PROSE, NO MARKDOWN FENCES. Return exactly one raw JSON object — no ```json fences, no commentary.
-</extraction_discipline>
-
 <receipt_layout_rules>
 Analyze the OCR line sequence and classify the layout state in the `"ly"` field:
 1. "MISSING-HEADER": The very first lines in the input sequence already contain product codes, item prices, or column headers (e.g., "SL", "Đơn giá", "Thành tiền"). No merchant name/address exists at the top. 
