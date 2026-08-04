@@ -434,6 +434,18 @@ async def process_receipt_images(
                 "[ref=%s] REQ DONE | engine=%s | tokens=p%d/c%d total=%d | %.2fs | imgs=%d",
                 ref, engine, p_tok, c_tok, p_tok + c_tok, elapsed, len(raw_bytes_list),
             )
+            # Kết quả trích xuất cuối cùng (đúng payload trả về client, đã qua
+            # postprocess/scrub + gắn image_quality). Trước đây full JSON chỉ
+            # được dump ở nhánh lỗi (HALLU FLAGGED / FALLBACK) nên request thành
+            # công không để lại dấu vết nội dung — không đối chiếu được log với
+            # ảnh khi downstream báo sai field.
+            logger.info(
+                "[ref=%s] EXTRACT RESULT | engine=%s | items=%d scalars=%d | json=%s",
+                ref, engine,
+                len(result.get("items") or []) if isinstance(result, dict) else 0,
+                _count_substantive_scalars(result),
+                json.dumps(result, ensure_ascii=False, default=str),
+            )
             return result
         except asyncio.CancelledError:
             logger.warning(

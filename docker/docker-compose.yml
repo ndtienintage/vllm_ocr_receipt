@@ -119,6 +119,7 @@ services:
     volumes:
       - ../src:/src
       - ../config:/config
+      - ../logs:/logs
       - paddleocr-models:/home/ocrapiuser/.paddlex
     cpus: "4"
     mem_limit: 16g

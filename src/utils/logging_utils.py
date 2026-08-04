@@ -7,6 +7,7 @@ Cung cấp:
 - Tô màu đầu ra trên console
 """
 
+import io
 import logging
 import logging.handlers
 import sys
@@ -69,6 +70,24 @@ class JSONFormatter(logging.Formatter):
         return json.dumps(log_data, ensure_ascii=False)
 
 
+def _utf8_stdout():
+    """stdout ghi được tiếng Việt, không làm chết record.
+
+    Console Windows mặc định cp1252 → mọi log có dấu (tên cửa hàng, tên hàng
+    trong JSON kết quả) ném UnicodeEncodeError trong handler. File handler đã
+    utf-8 nên chỉ console hỏng, nhưng nó bắn "--- Logging error ---" mỗi
+    request. Bọc lại buffer thành utf-8/replace; stream không có buffer
+    (đã bị thay bởi test/harness) thì trả nguyên sys.stdout.
+    """
+    stream = sys.stdout
+    if getattr(stream, "encoding", "").lower() in ("utf-8", "utf8"):
+        return stream
+    buffer = getattr(stream, "buffer", None)
+    if buffer is None:
+        return stream
+    return io.TextIOWrapper(buffer, encoding="utf-8", errors="replace", line_buffering=True)
+
+
 def setup_logger(
     name: str,
     level: str = "INFO",
@@ -94,7 +113,7 @@ def setup_logger(
     logger.propagate = False
 
     if console_output:
-        console_handler = logging.StreamHandler(sys.stdout)
+        console_handler = logging.StreamHandler(_utf8_stdout())
         console_handler.setLevel(getattr(logging, level.upper()))
         console_handler.setFormatter(ColoredFormatter())
         logger.addHandler(console_handler)
