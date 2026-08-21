@@ -67,7 +67,7 @@ services:
       - --limit-mm-per-prompt
       - '{"image":2, "video":0}'
       - --mm-processor-kwargs
-      - '{"min_pixels": 1048576, "max_pixels": 3145728}'
+      - '{"min_pixels": 524288, "max_pixels": 3145728}'
       - --uvicorn-log-level
       - warning
       - --mm-encoder-tp-mode
@@ -119,7 +119,6 @@ services:
     volumes:
       - ../src:/src
       - ../config:/config
-      - ../logs:/logs
       - paddleocr-models:/home/ocrapiuser/.paddlex
     cpus: "4"
     mem_limit: 16g

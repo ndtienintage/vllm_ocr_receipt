@@ -5,8 +5,7 @@
 #   - Mỗi dòng 1 pattern (substring match, case-insensitive, đã bỏ dấu tiếng Việt)
 #   - Item có name CHỨA bất kỳ pattern nào sẽ bị xoá khỏi kết quả OCR
 #   - Dòng bắt đầu bằng '#' là comment, bị bỏ qua
-#   - Dòng trống bị bỏ qua
-#   - Vẫn chấp nhận CSV trên 1 dòng (để copy-paste tiện) — VD: "voucher, coupon"
+#   - Vẫn cself.loggerhấp nhận CSV trên 1 dòng (để copy-paste tiện) — VD: "voucher, coupon"
 #
 # CHÚ Ý: pattern phải KHÔNG DẤU. Module postprocessor sẽ tự bỏ dấu tên item
 # trước khi so khớp, nên "khuyen mai" sẽ bắt cả "Khuyến Mãi", "khuyến mãi", v.v.
@@ -57,3 +56,130 @@ tui nilon
 tui bio co
 tui bhx co
 tui ban hang loai
+
+## Dien tu
+#op lung iphone
+#op lung samsung
+#op dien thoai
+#dien thoai samsung
+#dien thoai iphone
+#dien thoai xiaomi
+#samsung galaxy
+#apple iphone
+#kinh cuong luc
+#cuong luc iphone
+#mieng dan kinh
+#gia do dien thoai
+#tui dung dien thoai
+#day deo dien thoai
+#sim 4g
+#the nho
+#cap sac nhanh
+#cu sac nhanh
+#bo sac nhanh
+#day cap sac
+#adapter sac type
+#cap type c
+#sac du phong
+#pin sac du
+#tai nghe bluetooth
+#tai nghe khong day
+#tai nghe nhet
+#loa bluetooth
+#micro thu am
+#tivi led
+#chuot khong day
+#ban phim
+#mieng lot chuot
+#may tinh bang
+#may tinh casio
+#usb
+#camera ip 360
+#noi com dien
+#noi com nap
+#noi chien khong
+#may xay sinh to
+#may xay thit
+#bep dien tu
+#bep hong ngoai
+#lo vi song
+#binh dun sieu toc
+#may loc nuoc
+#may nuoc nong
+#may giat
+#tu lanh
+#may lanh
+#may say toc
+#may hut bui
+#ban ui hoi
+#den led
+#bong den led
+#den ngu
+#den pin
+#den ban
+#den hoc
+#quat cam tay
+#quat mini
+#quat dung
+#quat treo
+#quat sac
+#quat tich dien
+#quat lung
+#can dien tu
+#nhiet ke dien tu
+#may massage
+#may tam nuoc
+#dong ho thong minh
+#o cam dien
+#cong tac
+#nam cham
+#day buoc cap
+#tui chong nuoc
+#kem cat da
+#dau mai pha
+#kem cat da
+## am nhac
+#dan ghita
+#day dan guitar acoustic
+#dan ghita day sat
+#day dan guitar classic
+#phu kien ken
+#choi guitar
+#gay dan guitar
+#phim gay
+#day dan classic
+#khoa dan guitar classic
+#guitar picks
+#capo guitar
+#dan acoustic
+#capo dan guitar
+#capo guitar cao cap
+#dan guitar acoustic
+#dan piano dien tu
+#sao thoi
+#sao thoi cao cap
+#sao recorder
+#sao hoc sinh
+#sao doc recorder
+#sao tieu
+#ong sao
+#ong sao
+#sao yamaha
+#ken phim thoi hoi
+#ken thoi
+#ken melodion
+#ken phim melodica
+#phach nhac
+#phach nhac go
+#phach go
+#phach tre
+#phach nhac vang
+#thanh phach
+#thanh phach nhac
+#thanh phach go
+#phach nhac
+#trong go bo lac tay
+#tambourine
+#day dan violin
+#kalimba
+#mixer karaoke
