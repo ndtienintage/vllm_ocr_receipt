@@ -13,6 +13,9 @@ class OCRRequest(BaseModel):
     images_url: Optional[List[HttpUrl]] = None
     images_base64: Optional[List[str]] = None
     reference_id: str = "N/A"
+    # Có callback_url → xử lý nền, trả 202 ngay, kết quả POST về URL này.
+    # Không có → giữ hành vi cũ (đồng bộ, trả kết quả trong response).
+    callback_url: Optional[HttpUrl] = None
 
     @model_validator(mode="after")
     def validate_input(self):

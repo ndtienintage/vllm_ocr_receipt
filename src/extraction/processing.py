@@ -416,9 +416,10 @@ async def process_receipt_images(
                 raw_bytes_list, ref=ref,
             )
             # Gắn SAU postprocess/scrub/hallu-detect (các bước đó chỉ nhìn field
-            # receipt, không đụng khoá này) — response thêm khối metadata
-            # `image_quality`, additive với consumer hiện có.
+            # receipt, không đụng các khoá này) — response thêm metadata dùng
+            # chung cho mọi nhánh OCR thành công (VLM hoặc Paddle fallback).
             if isinstance(result, dict):
+                result["status"] = "success"
                 result["image_quality"] = image_quality
             elapsed = time.perf_counter() - t_start
             if not _has_substantive_data(result):
