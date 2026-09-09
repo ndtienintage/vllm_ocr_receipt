@@ -164,6 +164,10 @@ def _build_image_quality(metas: List[Dict[str, Any]], *, ref: str) -> Dict[str, 
       - legibility_zoom_ratio : float — tỉ lệ legibility zoom lớn nhất đã áp
                                 (1.0 = không zoom). Cho downstream biết hệ
                                 thống đã chủ động phóng chữ nhỏ bao nhiêu.
+      - text_h_at_output_px   : float|None — proxy chữ sau fit phía client.
+      - output_low_legibility: bool|None — ngưỡng quality trên ảnh đã fit.
+      - legibility_capped    : bool|None — fit không đạt ngưỡng riêng của fit;
+                                None nếu chưa đủ phép đo để kết luận.
     """
     pcfg = config.image_quality
     long_sides = [m.get("input_long_side") for m in metas if m.get("input_long_side")]
@@ -177,6 +181,22 @@ def _build_image_quality(metas: List[Dict[str, Any]], *, ref: str) -> Dict[str, 
     input_short_side = min(short_sides) if short_sides else None
     text_height = min(heights) if heights else None
     zoom_ratio = max(zooms) if zooms else 1.0
+    output_heights = [m["text_h_at_output_px"] for m in metas
+                      if m.get("text_h_at_output_px") is not None]
+    output_height = min(output_heights) if output_heights else None
+    output_low_legibility = (
+        output_height < pcfg.quality_min_text_height_px
+        if output_height is not None and pcfg.quality_min_text_height_px > 0
+        else None
+    )
+    if output_low_legibility is False and len(output_heights) != len(metas):
+        output_low_legibility = None
+    capped_values = [m["legibility_capped"] for m in metas
+                     if m.get("text_h_at_output_px") is not None
+                     and "legibility_capped" in m]
+    # True if any known image fails; False only when every image was measured.
+    legibility_capped = (True if any(capped_values) else
+                         False if metas and len(capped_values) == len(metas) else None)
 
     low_res = bool(
         pcfg.quality_min_input_short_side > 0
@@ -202,6 +222,13 @@ def _build_image_quality(metas: List[Dict[str, Any]], *, ref: str) -> Dict[str, 
             ref, text_height, pcfg.quality_min_text_height_px,
         )
 
+    if output_low_legibility or legibility_capped:
+        logger.warning(
+            "[ref=%s] VLM RESOLUTION RISK | source_text_h=%s output_text_h=%s "
+            "legibility_capped=%s — full-image fit may lose readable source text",
+            ref, text_height, output_height, legibility_capped,
+        )
+
     return {
         "input_long_side": input_long_side,
         "input_short_side": input_short_side,
@@ -211,6 +238,9 @@ def _build_image_quality(metas: List[Dict[str, Any]], *, ref: str) -> Dict[str, 
         ),
         "low_legibility": low_legibility,
         "legibility_zoom_ratio": zoom_ratio,
+        "text_h_at_output_px": output_height,
+        "output_low_legibility": output_low_legibility,
+        "legibility_capped": legibility_capped,
     }
 
 

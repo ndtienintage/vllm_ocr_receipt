@@ -75,10 +75,12 @@ def _plan_for_dims(w: int, h: int, text_h: Optional[float], cfg,
             pad_needed = bool(cfg.pad_to_min_pixels)
 
     text_h_out = text_h * scale if text_h is not None else None
-    capped = bool(
-        zoom and text_h_out is not None
-        and text_h_out < cfg.zoom_target_text_h * 0.98
-    )
+    # Legibility is an output constraint, not a side effect of enabling zoom.
+    # A clear 24px line can shrink to 7px on a tall receipt with zoom OFF.
+    legibility_target = max(cfg.min_text_height_px,
+                            cfg.zoom_target_text_h if zoom else 0.0)
+    capped = bool(text_h_out is not None and legibility_target > 0
+                  and text_h_out < legibility_target * 0.98)
     return FitPlan(
         scale=scale,
         reflow_cols=reflow_cols,

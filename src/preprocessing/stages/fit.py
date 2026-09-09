@@ -127,6 +127,15 @@ class FitStage:
             report.skipped_reason = "disabled"
             return
 
+        # OCR has its own processor limits. Preserve source pixels here;
+        # applying the VLM cap first permanently loses detail before fallback.
+        if ctx.purpose == Purpose.FALLBACK_OCR:
+            ctx.meta["reflow_applied"] = False
+            ctx.meta["legibility_zoom_ratio"] = 1.0
+            ctx.meta["text_h_at_output_px"] = ctx.meta.get("median_text_height_px")
+            report.skipped_reason = "preserve_source_resolution_for_ocr"
+            return
+
         h, w = ctx.image.shape[:2]
         text_h = ctx.meta.get("median_text_height_px")
         is_vlm = ctx.purpose == Purpose.VLM
@@ -168,7 +177,16 @@ class FitStage:
             image = cv2.resize(image, (target_w, target_h),
                                interpolation=cv2.INTER_CUBIC)
 
-        actual_scale = max(target_w / w2, target_h / h2)
+        scale_x, scale_y = target_w / w2, target_h / h2
+        actual_scale = max(scale_x, scale_y)
+        # Use the weaker axis as a conservative readability proxy: padding or
+        # alignment may widen the image without improving vertical glyph detail.
+        text_h_out = text_h * min(scale_x, scale_y) if text_h is not None else None
+        legibility_target = max(cfg.min_text_height_px,
+                                cfg.zoom_target_text_h if plan.zoom_applied else 0.0)
+        legibility_capped = bool(
+            plan.legibility_capped or (text_h_out is not None
+            and legibility_target > 0 and text_h_out < legibility_target * 0.98))
         # Chỉ báo zoom khi solver CHỦ ĐÍCH zoom/nâng-sàn — round-nearest
         # alignment có thể đẩy actual_scale lên ~1.0x vài % (không phải zoom).
         intentional_upscale = plan.zoom_applied or (plan.scale > 1.0 and is_vlm)
@@ -198,8 +216,8 @@ class FitStage:
         ctx.meta.setdefault("reflow_applied", False)
         ctx.meta["legibility_zoom_ratio"] = zoom_ratio
         ctx.meta["text_h_at_output_px"] = (
-            round(text_h * actual_scale, 1) if text_h is not None else None)
-        ctx.meta["legibility_capped"] = plan.legibility_capped
+            round(text_h_out, 1) if text_h_out is not None else None)
+        ctx.meta["legibility_capped"] = legibility_capped
         report.decisions.update({
             "plan_scale": round(plan.scale, 3),
             "actual_scale": round(actual_scale, 3),
@@ -207,7 +225,8 @@ class FitStage:
             "out_pixels": int(image.shape[0] * image.shape[1]),
             "zoom_applied": plan.zoom_applied,
             "thrift_applied": plan.thrift_applied,
-            "legibility_capped": plan.legibility_capped,
+            "legibility_capped": legibility_capped,
+            "scale_xy": [round(scale_x, 4), round(scale_y, 4)],
             "pad_px": pad_px,
         })
         report.applied = True

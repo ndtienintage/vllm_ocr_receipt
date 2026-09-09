@@ -70,6 +70,7 @@ photometric:
 fit:
   enabled: true
   max_pixels: 4194304     # đồng bộ VLLM_IMAGE_MAX_PIXELS
+  min_text_height_px: 16.0 # cảnh báo chữ nhỏ sau fit, kể cả khi zoom OFF
   min_pixels: 1048576     # đồng bộ VLLM_IMAGE_MIN_PIXELS
   max_side: 3584
   block: 32               # Qwen3-VL: patch16 × merge2 = 32px/token (verified)

@@ -106,6 +106,7 @@ class FitConfig:
     min_pixels: int = 1_048_576         # = VLLM_IMAGE_MIN_PIXELS (sàn area vLLM)
     max_side: int = 3584
     block: int = 32                     # Qwen3-VL patch16 × merge2 (verify Phase 0 §4)
+    min_text_height_px: float = 16.0    # sàn cảnh báo chiều cao poly; độc lập với zoom
     # Ablation Phase 3: zoom-quá-sàn ÂM trên proxy (-0.109 conf, +31% pixel)
     # → OFF mặc định (0.0 = tắt; bật lại = 32.0 khi có field-level eval).
     zoom_target_text_h: float = 0.0
