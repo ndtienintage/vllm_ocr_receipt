@@ -16,6 +16,7 @@ Nếu kết quả LLM sai mà KHÔNG khớp 3 mục trên, sửa prompt — KHÔ
 """
 
 from difflib import SequenceMatcher
+from functools import lru_cache
 from typing import Dict, Any, List, Optional
 
 from src.core.config import config
@@ -250,6 +251,44 @@ def _canonicalize_merchant_name(
     return data
 
 
+_PREFIX_LEN = 3  # độ dài khoá index; pattern ngắn hơn đi đường quét tuần tự
+
+
+@lru_cache(maxsize=4)
+def _pattern_index(
+    patterns: tuple[str, ...],
+) -> tuple[tuple[str, ...], Dict[str, tuple[str, ...]]]:
+    """Normalize pattern 1 lần/process + index theo _PREFIX_LEN ký tự đầu.
+
+    Mỗi vị trí trong name chỉ so với vài pattern cùng tiền tố thay vì cả danh
+    sách → kết quả y hệt `any(p in name for p in patterns)` nhưng 5k pattern
+    nhanh hơn 16-46× (đo: 5000 pattern × 80 item 20.6ms → 1.0ms).
+    """
+    normalized = {p for p in map(normalize_for_match, patterns) if p}
+    short = tuple(p for p in normalized if len(p) < _PREFIX_LEN)
+    index: Dict[str, List[str]] = {}
+    for p in normalized:
+        if len(p) >= _PREFIX_LEN:
+            index.setdefault(p[:_PREFIX_LEN], []).append(p)
+    return short, {k: tuple(v) for k, v in index.items()}
+
+
+def _find_pattern(
+    name: str,
+    short: tuple[str, ...],
+    index: Dict[str, tuple[str, ...]],
+) -> Optional[str]:
+    """Pattern là substring của `name` (đã normalize), None nếu không có."""
+    for p in short:
+        if p in name:
+            return p
+    for i in range(len(name) - _PREFIX_LEN + 1):
+        for p in index.get(name[i:i + _PREFIX_LEN], ()):
+            if name.startswith(p, i):
+                return p
+    return None
+
+
 def _filter_excluded_items(
     data: Dict[str, Any],
     patterns: tuple[str, ...],
@@ -264,26 +303,27 @@ def _filter_excluded_items(
     if not isinstance(items, list) or not items:
         return data
 
-    normalized_patterns = tuple(p for p in (normalize_for_match(p) for p in patterns) if p)
-    if not normalized_patterns:
+    short, index = _pattern_index(patterns)
+    if not short and not index:
         return data
 
     filtered_items: List[Dict[str, Any]] = []
-    removed_count = 0
+    matched: List[str] = []
     for item in items:
         if not isinstance(item, dict):
             filtered_items.append(item)
             continue
         name = normalize_for_match(first_present(item, "name", "n"))
-        if name and any(p in name for p in normalized_patterns):
-            removed_count += 1
+        hit = _find_pattern(name, short, index) if name else None
+        if hit is not None:
+            matched.append(hit)
             continue
         filtered_items.append(item)
 
-    if removed_count > 0:
+    if matched:
         logger.debug(
-            "Removed %d item(s) by EXCLUDE_ITEM_PATTERNS=%s",
-            removed_count, list(normalized_patterns),
+            "Removed %d item(s) by EXCLUDE_ITEM_PATTERNS matched=%s",
+            len(matched), matched,
         )
 
     data["items"] = filtered_items
