@@ -11,7 +11,7 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass, field, fields
 from pathlib import Path
-from typing import Any, Mapping, Optional
+from typing import Any, Mapping
 
 _DEFAULT_YAML = Path(__file__).parent / "defaults" / "default.yaml"
 
@@ -24,10 +24,8 @@ class ServicesConfig:
     det_limit_type: str = "max"
     doc_ori_model: str = "PP-LCNet_x1_0_doc_ori"
     textline_model: str = "PP-LCNet_x1_0_textline_ori"
-    rec_model: str = "PP-OCRv5_server_rec"
     enable_doc_ori: bool = True
     enable_textline: bool = True
-    enable_rec: bool = True   # chỉ dùng cho gate variants + eval
 
 
 @dataclass
@@ -81,22 +79,9 @@ class GateConfig:
     unreadable_min_polys: int = 3
     unreadable_text_h: float = 12.0     # text_h ĐẠT ĐƯỢC sau budget solver (px poly)
     unreadable_blur: float = 80.0       # lapvar @norm_width
-    # MARGINAL — kích hoạt multi-variant selection
+    # MARGINAL — chỉ ghi verdict vào journal
     marginal_text_h: float = 20.0
     marginal_blur: float = 250.0
-    # Ablation Phase 3: photometric thua minimal 6/6 ảnh MARGINAL, tốn
-    # 240ms-2.2s/ảnh → OFF mặc định; bật khi dataset có bóng đổ/loá thật.
-    variants_enabled: bool = False
-    variant_sample: int = 12            # số poly crop chấm điểm mỗi variant
-    variant_min_gain: float = 0.02      # conf trung bình phải hơn ≥ 2 điểm % mới đổi
-
-
-@dataclass
-class PhotometricConfig:
-    enabled: bool = False               # ADR-09: OFF mặc định, chỉ bật khi ablation thắng
-    bg_kernel_frac: float = 0.125       # kernel ước lượng nền = frac × cạnh ngắn
-    clahe_clip: float = 2.0
-    clahe_grid: int = 8
 
 
 @dataclass
@@ -106,18 +91,16 @@ class FitConfig:
     min_pixels: int = 1_048_576         # = VLLM_IMAGE_MIN_PIXELS (sàn area vLLM)
     max_side: int = 3584
     block: int = 32                     # Qwen3-VL patch16 × merge2 (verify Phase 0 §4)
-    min_text_height_px: float = 16.0    # sàn cảnh báo chiều cao poly; độc lập với zoom
-    # Ablation Phase 3: zoom-quá-sàn ÂM trên proxy (-0.109 conf, +31% pixel)
-    # → OFF mặc định (0.0 = tắt; bật lại = 32.0 khi có field-level eval).
-    zoom_target_text_h: float = 0.0
+    min_text_height_px: float = 16.0    # sàn cảnh báo chiều cao poly sau fit
     thrift_target_text_h: float = 32.0  # chữ > target → downscale (conf-neutral, -13-26% pixel)
-    max_upscale: float = 2.5
     token_thrift: bool = True
     pad_to_min_pixels: bool = True
     pad_color: int = 255
-    # Ablation Phase 3: reflow thua trên chính ảnh nó kích hoạt (conf -0.015,
-    # chars -39%) theo proxy OCR → OFF mặc định; giữ code để re-test với VLM
-    # thật (proxy không có aspect-weakness và prompt hint của VLM).
+    # Reflow: receipt dọc dài bị trần cạnh dài ép nhỏ chữ → chia N cột xếp cạnh
+    # nhau (tháo trần cạnh dài, bảo toàn area). Ablation Phase 3 (proxy OCR):
+    # conf -0.015, chars -39% trên ảnh nó kích hoạt → OFF mặc định; bật bằng
+    # PP2_FIT_REFLOW_ENABLED=true (proxy không có aspect-weakness + prompt hint
+    # của VLM — cần eval field-level với VLM thật).
     reflow_enabled: bool = False
     reflow_aspect_trigger: float = 4.0
     reflow_gain_min: float = 1.2        # reflow phải nâng text_h_out ≥ 1.2× mới áp
@@ -135,7 +118,6 @@ class PipelineConfig:
     orient: OrientConfig = field(default_factory=OrientConfig)
     localize: LocalizeConfig = field(default_factory=LocalizeConfig)
     gate: GateConfig = field(default_factory=GateConfig)
-    photometric: PhotometricConfig = field(default_factory=PhotometricConfig)
     fit: FitConfig = field(default_factory=FitConfig)
 
 
@@ -165,16 +147,14 @@ def _apply_dict(cfg_section: Any, data: Mapping[str, Any], origin: str) -> None:
         setattr(cfg_section, key, value)
 
 
-def load_config(yaml_path: Optional[str] = None,
-                env: Optional[Mapping[str, str]] = None) -> PipelineConfig:
-    """default.yaml → (yaml_path nếu có) → env PP2_* → legacy alias."""
-    env = os.environ if env is None else env
+def load_config() -> PipelineConfig:
+    """default.yaml → env PP2_* → legacy alias."""
+    env = os.environ
     cfg = PipelineConfig()
 
-    for path in filter(None, [_DEFAULT_YAML if _DEFAULT_YAML.exists() else None,
-                              Path(yaml_path) if yaml_path else None]):
+    if _DEFAULT_YAML.exists():
         import yaml
-        data = yaml.safe_load(Path(path).read_text(encoding="utf-8")) or {}
+        data = yaml.safe_load(_DEFAULT_YAML.read_text(encoding="utf-8")) or {}
         for section, values in data.items():
             if not hasattr(cfg, section):
                 raise ValueError(f"Config section không tồn tại: {section}")

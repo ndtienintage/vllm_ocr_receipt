@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Dict, List, Optional, Protocol, runtime_checkable
+from typing import Any, Dict, List, Optional
 
 import numpy as np
 
@@ -26,8 +26,8 @@ class Route(str, Enum):
 
 
 class Purpose(str, Enum):
-    VLM = "vlm"                    # output cho Qwen3-VL (zoom + reflow cho phép)
-    FALLBACK_OCR = "fallback_ocr"  # output cho PaddleOCR fallback (1 cột, không zoom)
+    VLM = "vlm"                    # output cho Qwen3-VL (fit theo pixel budget, reflow cho phép)
+    FALLBACK_OCR = "fallback_ocr"  # output cho PaddleOCR fallback (1 cột, giữ độ phân giải nguồn)
 
 
 @dataclass
@@ -90,18 +90,3 @@ class PipelineResult:
     verdict: Verdict
     reject_reason: Optional[str]
     meta: Dict[str, Any]
-
-    @property
-    def journal(self) -> Dict[str, Any]:
-        return self.meta.get("stages", {})
-
-
-@runtime_checkable
-class Stage(Protocol):
-    """Runner tạo report + đo elapsed_ms; stage chỉ ghi quyết định vào report
-    và biến đổi ctx. Stage KHÔNG được nuốt exception tuỳ tiện — cứ để raise,
-    runner ghi vào report.error và pipeline tiếp tục với ảnh hiện có."""
-
-    name: str
-
-    def run(self, ctx: PipelineContext, report: StageReport) -> None: ...

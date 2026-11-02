@@ -92,20 +92,11 @@ class VLLMClient:
     ):
         self.base_url = base_url
         self.model = model
-        self._http_client = http_client
         self.client = AsyncOpenAI(base_url=base_url, api_key=api_key, http_client=http_client, max_retries=0)
         self._receipt_schema = Receipt.model_json_schema(by_alias=True)
         # Cache token counts per prompt hash — prompt template gần tĩnh, hit rate ~100%.
         self._token_count_cache: dict[int, int] = {}
         logger.info("VLLMClient ready | model=%s", model)
-
-    async def close(self) -> None:
-        if self._http_client is not None:
-            return
-        try:
-            await self.client.close()
-        except Exception:
-            pass
 
     def _tokenize_url(self) -> str:
         """Derive POST /tokenize URL từ base_url (strip trailing /v1)."""

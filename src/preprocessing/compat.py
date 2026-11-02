@@ -11,7 +11,7 @@ Bảo đảm: LUÔN trả ảnh (không bao giờ None / raise); meta luôn có
 
 Additive (mới so với hàm cũ): meta thêm `verdict`, `reject_reason`, `stages`
 (journal), `route`, `pipeline_version`. Caller muốn reject-with-reason nên dùng
-`Pipeline().run_bytes()` → `PipelineResult` trực tiếp thay vì adapter này.
+`get_pipeline().run()` → `PipelineResult` trực tiếp thay vì adapter này.
 """
 
 from __future__ import annotations

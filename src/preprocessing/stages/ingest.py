@@ -1,43 +1,17 @@
-"""S0 Ingest — decode an toàn, chuẩn hoá về BGR uint8, ghi nhận EXIF/dims.
+"""S0 Ingest — chuẩn hoá ảnh đã decode về BGR uint8, ghi nhận dims.
 
-Ghi chú EXIF: cv2.imdecode trên OpenCV 4.10 ĐÃ áp EXIF orientation (verify
-empirically ở Phase 0 — hành vi này không được document rõ giữa các version).
-Unit test `test_ingest_exif_pinned` chốt hành vi; nâng cấp OpenCV làm test đỏ
-→ phải xử lý EXIF thủ công tại đây trước khi lên version.
+Ghi chú EXIF: decode diễn ra ở `src.utils.image_utils.load_image_from_bytes`
+(cv2.imdecode IMREAD_COLOR — OpenCV 4.10, pin qua paddlex, ĐÃ áp EXIF
+orientation; verify empirically ở Phase 0). Nâng cấp OpenCV → verify lại hành
+vi này trước khi lên version, nếu mất thì tự transpose tại đây.
 """
 
 from __future__ import annotations
-
-from typing import Optional
 
 import cv2
 import numpy as np
 
 from src.preprocessing.contracts import PipelineContext, StageReport
-
-
-def decode_image(data: bytes) -> Optional[np.ndarray]:
-    """bytes (JPEG/PNG/...) → BGR ndarray. None khi hỏng/không hỗ trợ."""
-    if not data:
-        return None
-    try:
-        arr = np.frombuffer(data, dtype=np.uint8)
-        return cv2.imdecode(arr, cv2.IMREAD_COLOR)
-    except Exception:
-        return None
-
-
-def exif_orientation_tag(data: bytes) -> Optional[int]:
-    """Đọc EXIF orientation tag (274) từ header — chỉ để audit metadata,
-    KHÔNG dùng để transform (cv2 4.10 đã áp). Best-effort."""
-    try:
-        import io
-        from PIL import Image
-        with Image.open(io.BytesIO(data)) as im:
-            exif = im.getexif()
-            return int(exif.get(274)) if exif and exif.get(274) else None
-    except Exception:
-        return None
 
 
 class IngestStage:

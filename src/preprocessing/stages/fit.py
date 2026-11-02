@@ -81,8 +81,7 @@ def compose_columns(image: np.ndarray, splits: List[int], sep_px: int,
     return canvas
 
 
-def target_dims(w: int, h: int, scale: float, cfg,
-                *, enforce_floor: bool) -> tuple:
+def target_dims(w: int, h: int, scale: float, cfg) -> tuple:
     """Chọn (target_w, target_h) bội block: round-NEAREST theo scale (như
     smart_resize), rồi ép trần (max_side, max_pixels) bằng cách hạ từng block,
     rồi ép sàn min_pixels bằng cách NÂNG từng block cạnh có relative-change
@@ -100,7 +99,7 @@ def target_dims(w: int, h: int, scale: float, cfg,
             tw -= block
         elif th > block:
             th -= block
-    if enforce_floor and cfg.min_pixels > 0:
+    if cfg.min_pixels > 0:
         for _ in range(256):
             if tw * th >= cfg.min_pixels:
                 break
@@ -138,12 +137,8 @@ class FitStage:
 
         h, w = ctx.image.shape[:2]
         text_h = ctx.meta.get("median_text_height_px")
-        is_vlm = ctx.purpose == Purpose.VLM
-        allow_reflow = is_vlm and ctx.route == Route.PHOTO and ctx.polys is not None
-
-        plan = budget.solve(w, h, text_h, cfg, allow_zoom=is_vlm,
-                            allow_reflow=allow_reflow,
-                            enforce_floor=is_vlm)
+        allow_reflow = ctx.route == Route.PHOTO and ctx.polys is not None
+        plan = budget.solve(w, h, text_h, cfg, allow_reflow=allow_reflow)
         image = ctx.image
 
         # ── Reflow (nếu plan nói) ────────────────────────────────────────────
@@ -152,8 +147,7 @@ class FitStage:
                 ctx.polys, h, plan.reflow_cols, cfg.reflow_split_search_frac)
             if splits is None:
                 report.decisions["reflow"] = "no_safe_split"
-                plan = budget.solve(w, h, text_h, cfg, allow_zoom=is_vlm,
-                                    allow_reflow=False, enforce_floor=is_vlm)
+                plan = budget.solve(w, h, text_h, cfg, allow_reflow=False)
             else:
                 image = compose_columns(
                     image, splits, cfg.reflow_separator_px, cfg.pad_color)
@@ -163,7 +157,7 @@ class FitStage:
                 report.decisions["reflow"] = {
                     "n_columns": plan.reflow_cols,
                     "split_ys": splits,
-                    "gain": plan.notes.get("reflow_gain"),
+                    "gain": plan.reflow_gain,
                 }
 
         # ── Resize + align bội block (chống vLLM resample lần 2) ─────────────
@@ -171,8 +165,7 @@ class FitStage:
         # nhẹ so với ước lượng của solver) — trần cứng không bao giờ được vượt,
         # sàn không bao giờ bị rớt do rounding.
         h2, w2 = image.shape[:2]
-        target_w, target_h = target_dims(w2, h2, plan.scale, cfg,
-                                         enforce_floor=is_vlm)
+        target_w, target_h = target_dims(w2, h2, plan.scale, cfg)
         if (target_w, target_h) != (w2, h2):
             image = cv2.resize(image, (target_w, target_h),
                                interpolation=cv2.INTER_CUBIC)
@@ -182,21 +175,19 @@ class FitStage:
         # Use the weaker axis as a conservative readability proxy: padding or
         # alignment may widen the image without improving vertical glyph detail.
         text_h_out = text_h * min(scale_x, scale_y) if text_h is not None else None
-        legibility_target = max(cfg.min_text_height_px,
-                                cfg.zoom_target_text_h if plan.zoom_applied else 0.0)
         legibility_capped = bool(
             plan.legibility_capped or (text_h_out is not None
-            and legibility_target > 0 and text_h_out < legibility_target * 0.98))
-        # Chỉ báo zoom khi solver CHỦ ĐÍCH zoom/nâng-sàn — round-nearest
-        # alignment có thể đẩy actual_scale lên ~1.0x vài % (không phải zoom).
-        intentional_upscale = plan.zoom_applied or (plan.scale > 1.0 and is_vlm)
+            and cfg.min_text_height_px > 0
+            and text_h_out < cfg.min_text_height_px * 0.98))
+        # Chỉ báo zoom khi solver CHỦ ĐÍCH nâng-sàn — round-nearest alignment
+        # có thể đẩy actual_scale lên ~1.0x vài % (không phải zoom).
         zoom_ratio = (round(actual_scale, 2)
-                      if intentional_upscale and actual_scale > 1.0 else 1.0)
+                      if plan.scale > 1.0 and actual_scale > 1.0 else 1.0)
 
         # ── Pad đạt sàn min_pixels khi trần cạnh chặn upscale ────────────────
         pad_px = 0
         h3, w3 = image.shape[:2]
-        if (is_vlm and cfg.pad_to_min_pixels and cfg.min_pixels > 0
+        if (cfg.pad_to_min_pixels and cfg.min_pixels > 0
                 and h3 * w3 < cfg.min_pixels):
             long3, short3 = max(h3, w3), min(h3, w3)
             needed_short = budget.align_up(
@@ -223,7 +214,6 @@ class FitStage:
             "actual_scale": round(actual_scale, 3),
             "out_size": [image.shape[1], image.shape[0]],
             "out_pixels": int(image.shape[0] * image.shape[1]),
-            "zoom_applied": plan.zoom_applied,
             "thrift_applied": plan.thrift_applied,
             "legibility_capped": legibility_capped,
             "scale_xy": [round(scale_x, 4), round(scale_y, 4)],

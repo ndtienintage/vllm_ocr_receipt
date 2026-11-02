@@ -131,7 +131,7 @@ class ImageQualityConfig:
     KHÔNG can thiệp kết quả extract). Cho downstream biết ảnh thuộc loại "hệ thống
     đọc không nổi" thay vì nhận kết quả thiếu trong im lặng.
 
-    Mọi biến đổi ảnh (resize/crop/orient/reflow/zoom) đã chuyển sang
+    Mọi biến đổi ảnh (resize/crop/orient) đã chuyển sang
     `src.preprocessing` (+ `defaults/default.yaml`). Class này CHỈ giữ 2 cờ chất
     lượng mà orchestrator (`extraction/processing.py::_build_image_quality`) đọc.
 

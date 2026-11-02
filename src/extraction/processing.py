@@ -246,7 +246,7 @@ def _build_image_quality(metas: List[Dict[str, Any]], *, ref: str) -> Dict[str, 
 
 def _preprocess_for_fallback_sync(raw_bytes: bytes) -> Optional[bytes]:
     """Tiền xử lý ảnh cho fallback text-only: cardinal-orient + deskew + crop,
-    KHÔNG reflow, KHÔNG legibility zoom (PaddleOCR tự resize theo det_limit).
+    KHÔNG reflow, KHÔNG fit (PaddleOCR tự resize theo det_limit).
     Trả JPEG bytes; None khi decode/encode fail (caller dùng raw).
 
     Lý do KHÔNG dùng lại preprocessed blob của primary: blob đó có thể đã reflow

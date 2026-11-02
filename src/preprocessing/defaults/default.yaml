@@ -1,5 +1,4 @@
-# Pipeline V2 — config mặc định (nguồn khai báo duy nhất; ablation = copy file
-# này, đổi cờ, truyền path vào load_config / eval harness).
+# Preprocessing — config mặc định (nguồn khai báo duy nhất).
 # Mọi khoá đều override được qua env: PP2_<SECTION>_<KEY>  (vd PP2_FIT_MAX_PIXELS).
 # Legacy alias còn hiệu lực: VLLM_IMAGE_MAX_PIXELS, VLLM_IMAGE_MIN_PIXELS, PADDLE_DEVICE.
 
@@ -10,10 +9,8 @@ services:
   det_limit_type: max
   doc_ori_model: PP-LCNet_x1_0_doc_ori
   textline_model: PP-LCNet_x1_0_textline_ori
-  rec_model: PP-OCRv5_server_rec
   enable_doc_ori: true
   enable_textline: true
-  enable_rec: true
 
 quality:
   enabled: true
@@ -57,30 +54,19 @@ gate:
   unreadable_blur: 80.0
   marginal_text_h: 20.0
   marginal_blur: 250.0
-  variants_enabled: false  # ablation P3: photometric thua minimal 6/6, tốn 0.24-2.2s
-  variant_sample: 12
-  variant_min_gain: 0.02
-
-photometric:
-  enabled: false          # ADR-09: chỉ bật khi ablation chứng minh
-  bg_kernel_frac: 0.125
-  clahe_clip: 2.0
-  clahe_grid: 8
 
 fit:
   enabled: true
   max_pixels: 4194304     # đồng bộ VLLM_IMAGE_MAX_PIXELS
-  min_text_height_px: 16.0 # cảnh báo chữ nhỏ sau fit, kể cả khi zoom OFF
+  min_text_height_px: 16.0 # cảnh báo chữ nhỏ sau fit
   min_pixels: 1048576     # đồng bộ VLLM_IMAGE_MIN_PIXELS
   max_side: 3584
   block: 32               # Qwen3-VL: patch16 × merge2 = 32px/token (verified)
-  zoom_target_text_h: 0.0   # ablation P3: zoom-quá-sàn âm trên proxy (-0.109 conf, +31% px) → OFF
   thrift_target_text_h: 32.0  # thrift conf-neutral, tiết kiệm 13-26% pixel → giữ
-  max_upscale: 2.5
   token_thrift: true
   pad_to_min_pixels: true
   pad_color: 255
-  reflow_enabled: false   # ablation P3: thua trên ảnh nó kích hoạt; giữ code để re-test với VLM thật
+  reflow_enabled: false   # ablation P3 thua trên proxy OCR; bật: PP2_FIT_REFLOW_ENABLED=true
   reflow_aspect_trigger: 4.0
   reflow_gain_min: 1.2
   reflow_max_cols: 4

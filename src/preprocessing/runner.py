@@ -9,19 +9,16 @@ cho biết stage nào chết, vì sao.
 from __future__ import annotations
 
 import time
-from typing import Any, Dict, Optional
-
 import numpy as np
 
-from src.preprocessing.config import PipelineConfig, load_config
+from src.preprocessing.config import load_config
 from src.preprocessing.contracts import (
     PipelineContext, PipelineResult, Purpose, Verdict,
 )
-from src.preprocessing.detectors import Services, build_services
+from src.preprocessing.detectors import build_services
 from src.preprocessing.stages import (
     DetectStage, FitStage, GateStage, IngestStage, LocalizeStage,
-    OrientStage, PhotometricStage, QualityStage, decode_image,
-    exif_orientation_tag,
+    OrientStage, QualityStage,
 )
 from src.utils.logging_utils import get_logger
 
@@ -29,7 +26,7 @@ logger = get_logger(__name__)
 
 STAGE_ORDER = [
     IngestStage, QualityStage, DetectStage, OrientStage,
-    LocalizeStage, GateStage, PhotometricStage, FitStage,
+    LocalizeStage, GateStage, FitStage,
 ]
 
 
@@ -37,21 +34,17 @@ class Pipeline:
     """Pipeline preprocessing v2. Stateless giữa các lần run (trừ model cache
     trong services) — an toàn gọi song song ở mức pipeline (services tự lock)."""
 
-    def __init__(self, config: Optional[PipelineConfig] = None,
-                 services: Optional[Services] = None) -> None:
-        self.config = config or load_config()
-        self.services = services if services is not None else build_services(self.config)
+    def __init__(self) -> None:
+        self.config = load_config()
+        self.services = build_services(self.config)
         self.stages = [cls() for cls in STAGE_ORDER]
 
     def run(self, image: np.ndarray, *,
-            purpose: Purpose = Purpose.VLM,
-            extra_meta: Optional[Dict[str, Any]] = None) -> PipelineResult:
+            purpose: Purpose = Purpose.VLM) -> PipelineResult:
         ctx = PipelineContext(
             image=image, config=self.config, services=self.services,
             purpose=purpose,
         )
-        if extra_meta:
-            ctx.meta.update(extra_meta)
 
         for i, stage in enumerate(self.stages):
             report = ctx.new_report(stage.name)
@@ -79,13 +72,3 @@ class Pipeline:
             reject_reason=ctx.reject_reason,
             meta=meta,
         )
-
-    def run_bytes(self, data: bytes, *,
-                  purpose: Purpose = Purpose.VLM) -> PipelineResult:
-        """Decode bytes rồi chạy pipeline. Raise ValueError khi bytes hỏng."""
-        image = decode_image(data)
-        if image is None:
-            raise ValueError("preprocessing: decode ảnh thất bại (bytes hỏng/không hỗ trợ)")
-        exif = exif_orientation_tag(data)
-        extra = {"exif_orientation": exif} if exif is not None else None
-        return self.run(image, purpose=purpose, extra_meta=extra)

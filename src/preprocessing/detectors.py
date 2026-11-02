@@ -1,56 +1,21 @@
-"""Service layer — interface cho model CV + adapter PaddleOCR.
+"""Service layer — adapter PaddleOCR cho các stage.
 
-Stage KHÔNG import paddle trực tiếp: mọi model đi qua Services để (a) test
-bằng fake không cần GPU, (b) lazy-init + lock (Paddle predictor không
-thread-safe; GPU chia với vLLM — giữ đúng bài học v1), (c) một điểm duy nhất
-parse output format PaddleOCR (dict vs object).
+Stage KHÔNG import paddle trực tiếp: mọi model đi qua Services để (a) lazy-init
++ lock (Paddle predictor không thread-safe; GPU chia với vLLM — giữ đúng bài học
+v1), (b) một điểm duy nhất parse output format PaddleOCR (dict vs object).
 """
 
 from __future__ import annotations
 
 import threading
 from dataclasses import dataclass
-from typing import List, Optional, Protocol, Sequence
+from typing import Optional
 
 import numpy as np
 
 from src.utils.logging_utils import get_logger
 
 logger = get_logger(__name__)
-
-
-class TextDetector(Protocol):
-    def detect(self, image: np.ndarray) -> Optional[np.ndarray]:
-        """Trả polys (N,4,2) float32 hoặc None khi không detect được."""
-        ...
-
-
-class DocOrientation(Protocol):
-    def label(self, image: np.ndarray) -> Optional[str]:
-        """'0' | '90' | '180' | '270' | None. Convention PaddleOCR: label = số
-        độ ảnh ĐANG bị xoay CW so với upright."""
-        ...
-
-
-class TextlineOrientation(Protocol):
-    def is_upside(self, crop: np.ndarray) -> Optional[bool]:
-        """True nếu textline crop bị lộn ngược 180°. None khi không phán được."""
-        ...
-
-
-class TextScorer(Protocol):
-    def scores(self, crops: Sequence[np.ndarray]) -> List[float]:
-        """Recognition confidence [0..1] cho từng crop (objective function cho
-        multi-variant — KHÔNG dùng làm bộ đọc)."""
-        ...
-
-
-@dataclass
-class Services:
-    detector: Optional[TextDetector] = None
-    doc_ori: Optional[DocOrientation] = None
-    textline: Optional[TextlineOrientation] = None
-    scorer: Optional[TextScorer] = None
 
 
 # ── Paddle adapters ───────────────────────────────────────────────────────────
@@ -67,6 +32,8 @@ def _result_field(res0, *names):
 
 
 class PaddleTextDetector:
+    """detect(image) → polys (N,4,2) float32 hoặc None khi không detect được."""
+
     def __init__(self, cfg) -> None:
         self._cfg = cfg
         self._model = None
@@ -109,6 +76,9 @@ class PaddleTextDetector:
 
 
 class PaddleDocOrientation:
+    """label(image) → '0' | '90' | '180' | '270' | None. Convention PaddleOCR:
+    label = số độ ảnh ĐANG bị xoay CW so với upright."""
+
     def __init__(self, cfg) -> None:
         self._cfg = cfg
         self._model = None
@@ -156,6 +126,9 @@ class PaddleDocOrientation:
 
 
 class PaddleTextlineOrientation:
+    """is_upside(crop) → True nếu textline crop bị lộn ngược 180°; None khi
+    không phán được."""
+
     def __init__(self, cfg) -> None:
         self._cfg = cfg
         self._model = None
@@ -200,44 +173,11 @@ class PaddleTextlineOrientation:
             return None
 
 
-class PaddleTextScorer:
-    def __init__(self, cfg) -> None:
-        self._cfg = cfg
-        self._model = None
-        self._init_lock = threading.Lock()
-        self._predict_lock = threading.Lock()
-        self._failed = False
-
-    def _get(self):
-        if self._model is not None or self._failed:
-            return self._model
-        with self._init_lock:
-            if self._model is None and not self._failed:
-                try:
-                    from paddleocr import TextRecognition
-                    self._model = TextRecognition(
-                        model_name=self._cfg.rec_model, device=self._cfg.device)
-                    logger.info("preprocessing TextRecognition init: %s", self._cfg.rec_model)
-                except Exception as e:
-                    self._failed = True
-                    logger.warning("preprocessing TextRecognition init failed: %s", e)
-        return self._model
-
-    def scores(self, crops: Sequence[np.ndarray]) -> List[float]:
-        model = self._get()
-        if model is None or not crops:
-            return []
-        out: List[float] = []
-        try:
-            with self._predict_lock:
-                results = model.predict(input=list(crops))
-            for res in results or []:
-                score = _result_field(res, "rec_score", "score")
-                out.append(float(score) if score is not None else 0.0)
-            return out
-        except Exception as e:
-            logger.warning("text scorer predict failed: %s", e)
-            return []
+@dataclass
+class Services:
+    detector: Optional[PaddleTextDetector] = None
+    doc_ori: Optional[PaddleDocOrientation] = None
+    textline: Optional[PaddleTextlineOrientation] = None
 
 
 def build_services(cfg) -> Services:
@@ -247,5 +187,4 @@ def build_services(cfg) -> Services:
         detector=PaddleTextDetector(scfg),
         doc_ori=PaddleDocOrientation(scfg) if scfg.enable_doc_ori else None,
         textline=PaddleTextlineOrientation(scfg) if scfg.enable_textline else None,
-        scorer=PaddleTextScorer(scfg) if scfg.enable_rec else None,
     )

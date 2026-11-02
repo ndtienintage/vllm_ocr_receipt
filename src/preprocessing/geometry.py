@@ -1,10 +1,9 @@
-"""Hình học thuần (pure functions, không I/O, không model) — unit-testable.
+"""Hình học thuần (pure functions, không I/O, không model).
 
 Quy ước góc: long-axis angle ∈ (-90, 90], đo bằng atan2(dy, dx) trên toạ độ
 ảnh (y hướng xuống). Góc rotate dương truyền cho cv2.getRotationMatrix2D và
-các hàm ở đây dùng CÙNG quy ước, nên `rotate_image_free(img, angle)` với
-angle = long-axis angle đo được sẽ đưa text về nằm ngang (được chốt bằng
-unit test angle-recovery, không dựa vào suy luận dấu).
+các hàm ở đây dùng CÙNG quy ước, nên `rotate_free(img, polys, angle)` với
+angle = long-axis angle đo được sẽ đưa text về nằm ngang.
 """
 
 from __future__ import annotations

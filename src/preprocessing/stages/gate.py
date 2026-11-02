@@ -4,40 +4,18 @@ Verdict dựa trên OCR-EVIDENCE (polys + text height ĐẠT ĐƯỢC sau budget
 không phải blur-var đơn thuần (Phase 0: lapvar 115 vẫn readable — blur-var một
 mình chắc chắn false-positive; đó là lý do v1 bỏ gate, nhưng bỏ hẳn thì vi
 phạm spec reject-with-reason).
-
-MARGINAL + variants_enabled: A/B minimal vs photometric trên sample poly crops,
-chấm bằng PaddleOCR recognition confidence (OCR làm objective function, không
-làm bộ đọc). Thắng ≥ variant_min_gain mới áp — chống flip-flop theo noise.
 """
 
 from __future__ import annotations
 
-from typing import List
-
-import cv2
-import numpy as np
-
-from src.preprocessing import budget, geometry
+from src.preprocessing import budget
 from src.preprocessing.contracts import (
     PipelineContext, Purpose, Route, StageReport, Verdict,
 )
-from src.preprocessing.stages.photometric import normalize_illumination
 
 
 class GateStage:
     name = "gate"
-
-    def _sample_crops(self, ctx: PipelineContext, k: int) -> List[np.ndarray]:
-        if ctx.polys is None:
-            return []
-        areas = np.array([cv2.contourArea(p.astype(np.float32)) for p in ctx.polys])
-        order = np.argsort(-areas)[:k]
-        crops = []
-        for i in order:
-            crop = geometry.crop_axis_aligned(ctx.image, ctx.polys[int(i)], min_side_px=8)
-            if crop is not None:
-                crops.append(crop)
-        return crops
 
     def run(self, ctx: PipelineContext, report: StageReport) -> None:
         cfg = ctx.config.gate
@@ -58,7 +36,7 @@ class GateStage:
         h, w = ctx.image.shape[:2]
         plan = budget.solve(
             w, h, text_h, ctx.config.fit,
-            allow_zoom=ctx.purpose == Purpose.VLM,
+            allow_thrift=ctx.purpose == Purpose.VLM,
             allow_reflow=ctx.purpose == Purpose.VLM and ctx.polys is not None,
         )
         text_h_achievable = plan.text_h_out
@@ -96,32 +74,3 @@ class GateStage:
             report.decisions["reject_reason"] = reason
         report.applied = True
 
-        # ── Multi-variant cho MARGINAL (OCR rec = objective function) ────────
-        if (verdict == Verdict.MARGINAL
-                and cfg.variants_enabled
-                and ctx.purpose == Purpose.VLM
-                and ctx.services is not None
-                and ctx.services.scorer is not None):
-            crops = self._sample_crops(ctx, cfg.variant_sample)
-            if not crops:
-                report.decisions["variants"] = "no_crops"
-                return
-            base_scores = ctx.services.scorer.scores(crops)
-            photo_crops = [
-                normalize_illumination(c, ctx.config.photometric) for c in crops]
-            photo_scores = ctx.services.scorer.scores(photo_crops)
-            if not base_scores or not photo_scores:
-                report.decisions["variants"] = "scorer_unavailable"
-                return
-            base_mean = float(np.mean(base_scores))
-            photo_mean = float(np.mean(photo_scores))
-            report.decisions["variant_scores"] = {
-                "minimal": round(base_mean, 4),
-                "photometric": round(photo_mean, 4),
-            }
-            if photo_mean - base_mean >= cfg.variant_min_gain:
-                ctx.image = normalize_illumination(ctx.image, ctx.config.photometric)
-                ctx.meta["photometric_applied_by_gate"] = True
-                report.decisions["variant_chosen"] = "photometric"
-            else:
-                report.decisions["variant_chosen"] = "minimal"
