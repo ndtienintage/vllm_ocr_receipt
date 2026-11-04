@@ -124,9 +124,14 @@ def _get_pipeline():
 
 # ── Predict & normalize ───────────────────────────────────────────────────────
 
-def _predict_sync(image_bytes: bytes) -> List[Dict[str, Any]]:
+def _predict_sync(image_bytes: bytes, pre_oriented: bool = False) -> List[Dict[str, Any]]:
     """
     Decode bytes → numpy → PaddleOCR.predict → list[{text, bbox, score, y_center}].
+
+    pre_oriented=True: ảnh đã qua orient stage của preprocessing → tắt doc_ori +
+    textline_ori cho call này (per-call override, model vẫn load cho ca raw).
+    doc_ori chạy lại trên ảnh đã upright chỉ thêm rủi ro misfire 180° mà không
+    có textline AND-confirm như orient stage (AGENT.md bẫy #2).
 
     bbox = axis-aligned [x1, y1, x2, y2] (đơn giản, dễ feed prompt).
     Filter score < _MIN_SCORE để loại OCR rác (text bóng, shadow, viền).
@@ -143,9 +148,13 @@ def _predict_sync(image_bytes: bytes) -> List[Dict[str, Any]]:
         logger.warning("paddle_text: decode fail (len=%d)", len(image_bytes))
         return []
 
+    overrides = (
+        {"use_doc_orientation_classify": False, "use_textline_orientation": False}
+        if pre_oriented else {}
+    )
     with _OCR_PREDICT_LOCK:
         try:
-            result = ocr.predict(input=image)
+            result = ocr.predict(input=image, **overrides)
         except Exception as e:
             logger.warning("paddle_text predict failed: %s: %s", type(e).__name__, e)
             return []
@@ -317,12 +326,14 @@ def _merge_into_rows(lines: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     return merged
 
 
-async def extract_text_lines_async(image_bytes: bytes, *, ref: str = "N/A") -> List[Dict[str, Any]]:
+async def extract_text_lines_async(
+    image_bytes: bytes, *, ref: str = "N/A", pre_oriented: bool = False,
+) -> List[Dict[str, Any]]:
     """Async wrapper. Trả [] khi disabled / init-fail / decode-fail / predict-fail
     — caller có thể an toàn fallback xuống fail_safe_receipt."""
     if not _app_config.paddle_text.enabled:
         return []
-    return await asyncio.to_thread(_predict_sync, image_bytes)
+    return await asyncio.to_thread(_predict_sync, image_bytes, pre_oriented)
 
 
 # ── Format cho text-only mapping prompt ───────────────────────────────────────

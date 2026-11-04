@@ -384,6 +384,7 @@ async def extract_receipt_text_only(
     image_bytes: bytes,
     *,
     ref: str = "N/A",
+    pre_oriented: bool = False,
 ) -> Tuple[Dict[str, Any], int, int]:
     """
     Fallback path: PaddleOCR full extract → text-only LLM mapping.
@@ -402,7 +403,9 @@ async def extract_receipt_text_only(
         api_key=config.vllm.api_key,
     )
 
-    lines = await paddle_text.extract_text_lines_async(image_bytes, ref=ref)
+    lines = await paddle_text.extract_text_lines_async(
+        image_bytes, ref=ref, pre_oriented=pre_oriented,
+    )
     if not lines:
         logger.warning("[ref=%s] FALLBACK aborted: paddle_text returned 0 lines", ref)
         return vllm.fail_safe_receipt(), 0, 0

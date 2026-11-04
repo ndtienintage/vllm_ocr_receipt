@@ -67,9 +67,11 @@ def preprocess_image_with_meta(
                 "input_short_side", "median_text_height_px",
                 "legibility_zoom_ratio", "legibility_capped",
                 "text_h_at_output_px", "verdict", "reject_reason",
-                "route", "quality", "stages", "total_ms",
+                "route", "quality", "stages", "total_ms", "image_tokens",
             ) and v is not None
         })
+        if result.pre_fit_image is not None:
+            meta["pre_fit_image"] = result.pre_fit_image  # ndarray — caller pop, không log
         meta.setdefault("reflow_applied", False)
         meta.setdefault("legibility_zoom_ratio", 1.0)
         meta["pipeline_version"] = "v2"

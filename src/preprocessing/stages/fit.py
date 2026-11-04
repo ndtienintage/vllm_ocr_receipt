@@ -204,6 +204,9 @@ class FitStage:
                                                cv2.BORDER_CONSTANT, value=color)
 
         ctx.image = image
+        # Cả 2 cạnh đã là bội block (resize + pad đều align) → smart_resize của
+        # vLLM là identity, đây là số visual token CHÍNH XÁC model nhận.
+        ctx.meta["image_tokens"] = (image.shape[0] // cfg.block) * (image.shape[1] // cfg.block)
         ctx.meta.setdefault("reflow_applied", False)
         ctx.meta["legibility_zoom_ratio"] = zoom_ratio
         ctx.meta["text_h_at_output_px"] = (

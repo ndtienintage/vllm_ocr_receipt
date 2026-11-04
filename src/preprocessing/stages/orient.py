@@ -38,7 +38,7 @@ class OrientStage:
             return 0, 0
         areas = np.array([cv2.contourArea(p.astype(np.float32)) for p in ctx.polys])
         order = np.argsort(-areas)[: cfg.textline_sample]
-        upside = total = 0
+        crops = []
         for i in order:
             crop = geometry.crop_axis_aligned(
                 ctx.image, ctx.polys[int(i)], min_side_px=cfg.textline_min_side_px)
@@ -46,12 +46,9 @@ class OrientStage:
                 continue
             if rotate_q % 4:
                 crop, _ = geometry.rotate_cardinal(crop, None, rotate_q)
-            verdict = svc.is_upside(crop)
-            if verdict is None:
-                continue
-            upside += int(verdict)
-            total += 1
-        return upside, total
+            crops.append(crop)
+        verdicts = [v for v in svc.upside_flags(crops) if v is not None]
+        return sum(verdicts), len(verdicts)
 
     # ── cardinal decision (ADR-03) ────────────────────────────────────────────
 

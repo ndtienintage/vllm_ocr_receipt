@@ -90,3 +90,6 @@ class PipelineResult:
     verdict: Verdict
     reject_reason: Optional[str]
     meta: Dict[str, Any]
+    # Ảnh sau orient+crop, TRƯỚC fit (không reflow/resize) — đúng input fallback
+    # OCR cần; giữ lại để fallback khỏi chạy lại cả pipeline.
+    pre_fit_image: Optional[np.ndarray] = None

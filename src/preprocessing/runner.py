@@ -46,7 +46,10 @@ class Pipeline:
             purpose=purpose,
         )
 
+        pre_fit_image = None
         for i, stage in enumerate(self.stages):
+            if stage.name == FitStage.name:
+                pre_fit_image = ctx.image
             report = ctx.new_report(stage.name)
             t0 = time.perf_counter()
             try:
@@ -71,4 +74,5 @@ class Pipeline:
             verdict=ctx.verdict,
             reject_reason=ctx.reject_reason,
             meta=meta,
+            pre_fit_image=pre_fit_image,
         )

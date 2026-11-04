@@ -105,16 +105,24 @@ def _has_substantive_data(result: Dict[str, Any]) -> bool:
     return _count_substantive_scalars(result) > 0
 
 
+# Fit lỗi/skip → không biết dims đã align → giả định trần vLLM (Qwen3-VL:
+# 32×32 px/token). +2/ảnh cho <|vision_start|>/<|vision_end|>.
+_WORST_IMAGE_TOKENS = config.vllm.image_max_pixels // (32 * 32)
+_IMAGE_SPECIAL_TOKENS = 2
+
+
 def _process_single_image_sync(
     raw_bytes: bytes, index: int, ref: str,
-) -> Optional[Tuple[bytes, Dict[str, Any]]]:
+) -> Optional[Tuple[bytes, Dict[str, Any], Optional[Any]]]:
     """
     CPU-bound: decode → preprocess (geometric only) → encode JPEG.
 
-    Trả về (jpeg_bytes, preprocess_meta); None CHỈ KHI decode hoặc encode fail.
-    meta gồm reflow_applied (caller bật reflow hint trong prompt) + các metric
-    chất lượng ảnh (input_long_side, median_text_height_px — xem
-    preprocess_image_with_meta docstring) cho khối `image_quality` của response.
+    Trả về (jpeg_bytes, preprocess_meta, pre_fit_image); None CHỈ KHI decode hoặc
+    encode fail. meta gồm reflow_applied (caller bật reflow hint trong prompt),
+    image_tokens + các metric chất lượng ảnh (input_long_side,
+    median_text_height_px — xem preprocess_image_with_meta docstring) cho khối
+    `image_quality` của response. pre_fit_image (ndarray|None): ảnh đã
+    orient+crop, chưa fit — input cho PaddleOCR fallback.
     """
     image = load_image_from_bytes(raw_bytes)
     if image is None:
@@ -122,6 +130,7 @@ def _process_single_image_sync(
         return None
 
     processed, meta = preprocess_image_with_meta(image)
+    pre_fit_image = meta.pop("pre_fit_image", None)
 
     try:
         # q=100 + 4:4:4 (xem _JPEG_ENCODE_PARAMS): giữ chữ nhỏ sắc nét, hạn chế
@@ -130,7 +139,7 @@ def _process_single_image_sync(
         if not success or encoded is None:
             logger.error("[ref=%s] Image[%d] encode failed.", ref, index)
             return None
-        return encoded.tobytes(), meta
+        return encoded.tobytes(), meta, pre_fit_image
     except Exception as e:
         logger.error("[ref=%s] Image[%d] encode error: %s", ref, index, e)
         return None
@@ -138,7 +147,7 @@ def _process_single_image_sync(
 
 async def _process_single_image(
     raw_bytes: bytes, index: int, ref: str,
-) -> Optional[Tuple[bytes, Dict[str, Any]]]:
+) -> Optional[Tuple[bytes, Dict[str, Any], Optional[Any]]]:
     return await asyncio.to_thread(_process_single_image_sync, raw_bytes, index, ref)
 
 
@@ -244,34 +253,28 @@ def _build_image_quality(metas: List[Dict[str, Any]], *, ref: str) -> Dict[str, 
     }
 
 
-def _preprocess_for_fallback_sync(raw_bytes: bytes) -> Optional[bytes]:
-    """Tiền xử lý ảnh cho fallback text-only: cardinal-orient + deskew + crop,
-    KHÔNG reflow, KHÔNG fit (PaddleOCR tự resize theo det_limit).
-    Trả JPEG bytes; None khi decode/encode fail (caller dùng raw).
+def _encode_fallback_source(pre_fit_image: Optional[Any]) -> Optional[bytes]:
+    """JPEG của ảnh orient+crop (chưa reflow/fit) mà primary đã tính — fallback
+    khỏi decode + chạy lại cả pipeline (~340ms). None → caller dùng raw.
 
-    Lý do KHÔNG dùng lại preprocessed blob của primary: blob đó có thể đã reflow
+    Lý do KHÔNG dùng lại blob đã fit của primary: blob đó có thể đã reflow
     (xếp cột cạnh nhau) → path bbox-based đọc xen kẽ cột → loạn thứ tự item.
     Lý do KHÔNG feed raw cho PaddleOCR: raw frame nền tối lớn khiến doc_ori nội
-    bộ misfire 180° → OCR gương → LLM map ra items=[]. Crop bỏ background nên
-    doc_ori hết cớ misfire.
+    bộ misfire 180° → OCR gương → LLM map ra items=[].
     """
-    image = load_image_from_bytes(raw_bytes)
-    if image is None:
+    if pre_fit_image is None:
         return None
-    processed, _ = preprocess_image_with_meta(image, for_fallback_ocr=True)
-    ok, encoded = cv2.imencode(".jpg", processed, _JPEG_ENCODE_PARAMS)
+    ok, encoded = cv2.imencode(".jpg", pre_fit_image, _JPEG_ENCODE_PARAMS)
     return encoded.tobytes() if ok and encoded is not None else None
 
 
-async def _preprocess_for_fallback(raw_bytes: bytes, *, ref: str) -> Optional[bytes]:
-    try:
-        return await asyncio.to_thread(_preprocess_for_fallback_sync, raw_bytes)
-    except Exception as e:
-        logger.warning(
-            "[ref=%s] fallback preprocess failed (%s: %s) — dùng raw bytes",
-            ref, type(e).__name__, e,
-        )
-        return None
+def _orientation_resolved(meta: Dict[str, Any]) -> bool:
+    """True khi orient stage đã quyết hướng ảnh (hoặc digital bypass — screenshot
+    luôn upright) → PaddleOCR fallback không cần doc_ori/textline_ori lại.
+    no_polys/disabled/error → chưa ai orient → để PaddleOCR tự làm."""
+    orient = (meta.get("stages") or {}).get("orient") or {}
+    return bool(orient) and not orient.get("error") and (
+        orient.get("skipped_reason") not in ("no_polys", "disabled"))
 
 
 async def _run_pipeline_stages(
@@ -295,16 +298,19 @@ async def _run_pipeline_stages(
     tasks = [_process_single_image(b, i, ref) for i, b in enumerate(raw_bytes_list)]
     results = await asyncio.gather(*tasks)
     valid = [r for r in results if r is not None]
-    valid_blobs: list[bytes] = [blob for blob, _ in valid]
+    valid_blobs: list[bytes] = [blob for blob, _, _ in valid]
+    metas = [m for _, m, _ in valid]
     # Bật reflow hint nếu BẤT KỲ ảnh nào đã chia cột (thường chỉ 1 ảnh/receipt).
-    any_reflow = any(bool(m.get("reflow_applied")) for _, m in valid)
+    any_reflow = any(bool(m.get("reflow_applied")) for m in metas)
+    image_tokens = sum(
+        m.get("image_tokens", _WORST_IMAGE_TOKENS) + _IMAGE_SPECIAL_TOKENS for m in metas)
 
     if not valid_blobs:
         raise UpstreamServiceError("All images failed decode/encode")
 
     # Cờ chất lượng ảnh — tính 1 lần từ preprocess meta, trả kèm MỌI nhánh
     # (primary lẫn fallback): chất lượng ảnh nguồn không phụ thuộc engine.
-    image_quality = _build_image_quality([m for _, m in valid], ref=ref)
+    image_quality = _build_image_quality(metas, ref=ref)
 
     # Primary: Qwen3-VL vision
     result_json: Dict[str, Any] = {}
@@ -315,7 +321,7 @@ async def _run_pipeline_stages(
 
     try:
         result_json, finish_reason, p_tok, c_tok = await extract_receipt_with_llm(
-            valid_blobs, ref=ref, reflow_applied=any_reflow,
+            valid_blobs, ref=ref, reflow_applied=any_reflow, image_tokens=image_tokens,
         )
         result_json = postprocess_receipt(result_json)
         result_json, nulled = scrub_hallu_fields(result_json)
@@ -351,11 +357,12 @@ async def _run_pipeline_stages(
         return result_json, "vllm", p_tok, c_tok, image_quality
 
     # Fallback feed ảnh ĐÃ preprocess (cardinal-orient + deskew + crop, KHÔNG
-    # reflow) thay vì raw. Raw frame nền tối lớn làm doc_ori nội bộ của PaddleOCR
-    # misfire 180° → OCR gương → LLM map ra items=[]. Crop bỏ background nên hết
-    # cớ misfire; tắt reflow để giữ thứ tự đọc 1-cột cho path bbox-based.
-    # Fail (decode/preprocess) → về raw bytes như trước.
-    fallback_source = await _preprocess_for_fallback(raw_bytes_list[0], ref=ref)
+    # reflow) của ảnh hợp lệ đầu tiên — tái dùng kết quả primary, không chạy lại
+    # pipeline. Ảnh đã orient → tắt doc_ori/textline_ori của PaddleOCR.
+    # Không có ảnh pre-fit (pipeline lỗi) → raw bytes + PaddleOCR tự orient.
+    _, first_meta, first_pre_fit = valid[0]
+    fallback_source = await asyncio.to_thread(_encode_fallback_source, first_pre_fit)
+    pre_oriented = fallback_source is not None and _orientation_resolved(first_meta)
     if fallback_source is None:
         fallback_source = raw_bytes_list[0]
     # empty_response + vlm_truncated: VLM đã chạy và trả data (partial khi truncated).
@@ -370,7 +377,9 @@ async def _run_pipeline_stages(
         )
     else:
         logger.warning("[ref=%s] FALLBACK to PaddleOCR | trigger=%s", ref, trigger)
-    fallback_json, f_p_tok, f_c_tok = await extract_receipt_text_only(fallback_source, ref=ref)
+    fallback_json, f_p_tok, f_c_tok = await extract_receipt_text_only(
+        fallback_source, ref=ref, pre_oriented=pre_oriented,
+    )
     fallback_json = postprocess_receipt(fallback_json)
 
     # Hallu salvage: trigger là hallu:* → primary chứa loop garbage (vd 75 item

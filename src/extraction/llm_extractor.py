@@ -135,9 +135,11 @@ async def _compute_max_tokens(
     *,
     vllm: VLLMClient,
     user_prompt: str,
+    image_tokens: int,
 ) -> int:
     """
-    Compute max_tokens cho primary vision path từ exact text token count.
+    Compute max_tokens cho primary vision path từ exact text token count + visual
+    tokens (prompt + max_tokens > max_model_len → vLLM trả 400 với request 2 ảnh lớn).
     /tokenize fail → pass thẳng max_tokens cap (không ước tính).
     """
     cfg = config.vllm
@@ -145,7 +147,7 @@ async def _compute_max_tokens(
         text_count = await vllm.count_text_tokens(user_prompt)
     except Exception:
         return cfg.max_tokens
-    budget = cfg.max_model_len - text_count - cfg.context_safety_margin
+    budget = cfg.max_model_len - text_count - image_tokens - cfg.context_safety_margin
     if budget < cfg.min_output_tokens:
         return cfg.min_output_tokens
     return min(cfg.max_tokens, budget)
@@ -156,6 +158,7 @@ async def extract_receipt_with_llm(
     *,
     ref: str = "N/A",
     reflow_applied: bool = False,
+    image_tokens: int = 0,
 ) -> Tuple[Dict[str, Any], str, int, int]:
     """
     Gửi ảnh hóa đơn đến Qwen3-VL qua vLLM.
@@ -177,7 +180,9 @@ async def extract_receipt_with_llm(
     )
 
     user_prompt = _build_user_prompt(reflow_applied=reflow_applied)
-    max_tokens = await _compute_max_tokens(vllm=vllm, user_prompt=user_prompt)
+    max_tokens = await _compute_max_tokens(
+        vllm=vllm, user_prompt=user_prompt, image_tokens=image_tokens,
+    )
 
     return await vllm.extract_receipt(
         user_prompt=user_prompt,

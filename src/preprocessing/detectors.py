@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import threading
 from dataclasses import dataclass
-from typing import Optional
+from typing import List, Optional
 
 import numpy as np
 
@@ -126,8 +126,8 @@ class PaddleDocOrientation:
 
 
 class PaddleTextlineOrientation:
-    """is_upside(crop) → True nếu textline crop bị lộn ngược 180°; None khi
-    không phán được."""
+    """upside_flags(crops) → mỗi crop: True nếu lộn ngược 180°; None khi không
+    phán được. Một predict batch cho cả list (thay vì 1 call/crop)."""
 
     def __init__(self, cfg) -> None:
         self._cfg = cfg
@@ -152,25 +152,31 @@ class PaddleTextlineOrientation:
                     logger.warning("preprocessing TextlineOrientation init failed: %s", e)
         return self._model
 
-    def is_upside(self, crop: np.ndarray) -> Optional[bool]:
+    @staticmethod
+    def _parse(res) -> Optional[bool]:
+        names = _result_field(res, "label_names")
+        if names:
+            return "180" in str(names[0])
+        ids = _result_field(res, "class_ids")
+        if ids is not None and len(ids) > 0:
+            return int(ids[0]) == 1
+        return None
+
+    def upside_flags(self, crops: List[np.ndarray]) -> List[Optional[bool]]:
         model = self._get()
-        if model is None:
-            return None
+        if model is None or not crops:
+            return [None] * len(crops)
         try:
             with self._predict_lock:
-                result = model.predict(input=crop)
-            if not result:
-                return None
-            names = _result_field(result[0], "label_names")
-            if names:
-                return "180" in str(names[0])
-            ids = _result_field(result[0], "class_ids")
-            if ids is not None and len(ids) > 0:
-                return int(ids[0]) == 1
-            return None
+                results = list(model.predict(input=crops, batch_size=len(crops)))
         except Exception as e:
             logger.warning("textline orientation predict failed: %s", e)
-            return None
+            return [None] * len(crops)
+        if len(results) != len(crops):
+            logger.warning("textline orientation: %d results cho %d crops",
+                           len(results), len(crops))
+            return [None] * len(crops)
+        return [self._parse(r) for r in results]
 
 
 @dataclass
